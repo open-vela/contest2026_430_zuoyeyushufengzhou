@@ -38,6 +38,7 @@
 
 #include "signbridge.h"
 #include "signbridge_infer.h"
+#include "signbridge_voice.h"
 #include "signbridge_camera.h"
 
 /****************************************************************************
@@ -113,6 +114,10 @@ int signbridge_sm_init(void)
 
   signbridge_camera_init(SIGNBRIDGE_CAM_SRC_TEST_PATTERN);
   signbridge_camera_start();
+
+  /* Initialize voice announcement module */
+
+  signbridge_voice_init();
 
   signbridge_enter_idle();
   return OK;
@@ -265,6 +270,10 @@ int signbridge_sm_post_result(const struct signbridge_result_s *result)
     {
       g_state = SIGNBRIDGE_STATE_RESULT;
       signbridge_enter_result();
+
+      /* Announce the recognized sign by voice */
+
+      signbridge_voice_play(result->class_id);
     }
 
   return OK;

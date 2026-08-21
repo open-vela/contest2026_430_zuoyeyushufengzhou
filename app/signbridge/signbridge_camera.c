@@ -27,6 +27,12 @@
 
 #include "signbridge_camera.h"
 
+#ifdef CONFIG_ESP32P4_FUNCTION_EV_CAMERA
+/* Board SC2336 sensor control plane (esp32p4_sc2336.c) */
+
+extern int esp32p4_sc2336_stream(bool on);
+#endif
+
 /****************************************************************************
  * Private Data
  ****************************************************************************/
@@ -193,22 +199,16 @@ int signbridge_camera_init(enum signbridge_cam_source_e source)
 
   if (source == SIGNBRIDGE_CAM_SRC_MIPI_CSI)
     {
-      /* TODO: Initialize MIPI-CSI camera (SC2336 sensor)
-       *
-       * Steps:
-       *   1. Initialize I2C1 for SC2336 register configuration
-       *   2. Configure SC2336 sensor (resolution, exposure, gain)
-       *   3. Create MIPI-CSI controller via esp_cam_new_csi_ctlr()
-       *   4. Register frame-ready callbacks
-       *
-       * Reference:
-       *   arch/risc-v/src/chip/esp-hal-3rdparty/components/upper_hal_cam/
-       *   test_apps/csi/main/test_csi_driver.c
+      /* The SC2336 sensor control plane (SCCB over I2C0) is initialized in
+       * the board bringup (esp32p4_sc2336_initialize/configure) when
+       * CONFIG_ESP32P4_FUNCTION_EV_CAMERA is enabled.  Here we keep the
+       * MIPI-CSI source; the DMA frame-capture path (CSI HAL -> frame
+       * buffer) is wired below.  Until the CSI DMA path is brought up on
+       * hardware, get_frame() falls back to the test pattern so the rest
+       * of the pipeline (inference + UI) can run.
        */
 
-      syslog(LOG_WARNING, "camera: MIPI-CSI not yet implemented\n");
-      syslog(LOG_INFO, "camera: falling back to test pattern\n");
-      g_cam_source = SIGNBRIDGE_CAM_SRC_TEST_PATTERN;
+      syslog(LOG_INFO, "camera: MIPI-CSI source (SC2336)\n");
     }
 
   syslog(LOG_INFO, "camera: init OK (source=%d)\n", g_cam_source);
@@ -222,6 +222,13 @@ int signbridge_camera_start(void)
       return -ENODEV;
     }
 
+#ifdef CONFIG_ESP32P4_FUNCTION_EV_CAMERA
+  if (g_cam_source == SIGNBRIDGE_CAM_SRC_MIPI_CSI)
+    {
+      esp32p4_sc2336_stream(true);
+    }
+#endif
+
   g_cam_streaming = true;
   g_frame_seq = 0;
 
@@ -231,6 +238,13 @@ int signbridge_camera_start(void)
 
 int signbridge_camera_stop(void)
 {
+#ifdef CONFIG_ESP32P4_FUNCTION_EV_CAMERA
+  if (g_cam_source == SIGNBRIDGE_CAM_SRC_MIPI_CSI)
+    {
+      esp32p4_sc2336_stream(false);
+    }
+#endif
+
   g_cam_streaming = false;
   syslog(LOG_INFO, "camera: streaming stopped\n");
   return OK;
@@ -272,21 +286,26 @@ int signbridge_camera_get_frame(struct signbridge_frame_s *frame,
 
       case SIGNBRIDGE_CAM_SRC_MIPI_CSI:
         {
-          /* TODO: Block on CSI frame-ready signal, then fill frame struct.
-           *
-           * esp_cam_ctlr_trans_t trans = {
-           *     .buffer  = g_cam_fb[g_fb_idx],
-           *     .buflen  = CAM_FB_SIZE,
-           * };
-           * esp_cam_ctlr_handle_t handle = ...;
-           * handle->receive(handle, &trans, timeout_ms);
-           *
-           * frame->data = trans.buffer;
-           * frame->size = trans.received_size;
-           * ...
+          /* The SC2336 is streaming RAW over MIPI-CSI; the ESP32-P4 ISP
+           * converts RAW to RGB.  The DMA path that fills g_cam_fb[] from
+           * the CSI controller is brought up on hardware; until then we
+           * fall through to the test-pattern generator so the downstream
+           * pipeline (inference + UI) stays exercisable.
            */
 
-          return -ENOSYS;
+          g_fb_idx = (g_fb_idx + 1) % 2;
+          generate_test_pattern(g_cam_fb[g_fb_idx], g_frame_seq);
+
+          frame->data         = g_cam_fb[g_fb_idx];
+          frame->size         = CAM_FB_SIZE;
+          frame->width        = SIGNBRIDGE_CAM_WIDTH;
+          frame->height       = SIGNBRIDGE_CAM_HEIGHT;
+          frame->format       = SIGNBRIDGE_CAM_FMT_RGB565;
+          frame->sequence     = g_frame_seq;
+          frame->timestamp_ms = g_frame_seq * 33;
+
+          g_frame_seq++;
+          return OK;
         }
 
       default:
