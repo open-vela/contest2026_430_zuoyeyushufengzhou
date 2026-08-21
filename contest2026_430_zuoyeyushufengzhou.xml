@@ -9,8 +9,9 @@
   <include name="openvela.xml"/>
 
   <project path="contest2026_430_zuoyeyushufengzhou" name="contest2026_430_zuoyeyushufengzhou">
-    <linkfile src="app/hello_app" dest="packages/demos/contest2026_430_hello_app"/>
-    <linkfile src="quickapp/hello_quickapp" dest="packages/apps/contest2026_430_hello_quickapp"/>
-    <linkfile src="board/contest_board" dest="vendor/openvela/boards/contest2026_430_board"/>
+    <!-- SignBridge app -> packages/demos (auto-picked by demos Make.defs wildcard) -->
+    <linkfile src="app/signbridge" dest="packages/demos/contest2026_430_signbridge"/>
+    <!-- ESP32-P4-Function-EV-Board adaptation docs & defconfig increments -->
+    <linkfile src="board/esp32p4_function_ev" dest="vendor/openvela/boards/contest2026_430_esp32p4_function_ev"/>
   </project>
 </manifest>

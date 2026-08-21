@@ -1,148 +1,132 @@
-# contest2026_430_zuoyeyushufengzhou
+# 手语桥（SignBridge）—— 端侧手语识别终端
 
-👋 欢迎参加 **2026 首届 openvela AI 硬件开发者大赛**！
+## 一、作品简介
 
-这是组委会为你的队伍创建的**专属参赛仓库**（本仓为样例/模板，队伍编号 `430`；你看到的将是你自己的 `contest2026_<编号>_<队伍名>`）。比赛期间，你的全部参赛代码、打包产物与 AI Coding 日志都提交到这里。
+手语桥是运行在 **ESP32-P4-Function-EV-Board** 上的纯端侧手语识别终端，
+基于 openvela（小米开源的 Apache NuttX RTOS）实现。面向听障群体的日常
+沟通场景：通过 MIPI 摄像头采集手部画面，端侧完成 21 关键点提取与
+TCN/MLP 时序分类，将手语实时翻译为文字并在 7 寸触摸屏上展示，
+全程离线、无云端依赖。
 
-> 本仓既是「代码仓」，又内置了一键拉取整套 openvela 工程的 `repo` 清单（manifest）。你只需跟它打交道，**自始至终只动一个文件夹**。
+核心亮点：
+- **openvela 首次跑通 ESP32-P4-Function-EV-Board**（新硬件适配）：
+  MIPI-DSI 显示（EK79007/ILI9881C）、GT911 触摸、MIPI-CSI 摄像头
+  框架全部基于 NuttX 上游驱动移植打通
+- **完整端侧推理管线**：摄像头帧 → 手部关键点 → 时序分类器
+  （INT8 量化，270KB 权重）→ 识别结果展示
+- **LVGL 实时界面**：识别结果 + 置信度 + 摄像头预览 + 手语动画播放
 
----
+## 二、选题方向
 
-## 一、先读这些官方文档
+新硬件适配 + AI 硬件产品创新（双赛道）。
 
-**通用（所有赛道必读）：**
+理由：ESP32-P4-Function-EV-Board 是乐鑫 2024 年发布的 AI 视觉旗舰
+开发板（双核 RISC-V 400MHz + 32MB PSRAM + MIPI-DSI/CSI + PPA），
+但 openvela 尚无该板级支持。本项目先完成板级移植（nsh → lvgl 基线），
+再在其上构建端侧手语识别应用，形成"移植 + 应用"完整闭环。
 
-| 文档                                                                                                                                     | 用途                                           |
-| ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| [《大赛总览》](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/contest_overview.md)                        | 赛道、流程、评分、资源，建议先通读             |
-| [《参赛代码提交指南》](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/code_submission_guide.md)           | 仓库获取、提交流程、时间与权限（**以此为准**） |
-| [《AI Coding 日志归集与提交手册》](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/ai_coding_log_guide.md) | 如何导出 AI 对话日志并提交到 `logs/`           |
+## 三、目录结构
 
-**按你的赛道选读（三选一）：**
+```
+app/signbridge/              # 端侧手语识别应用（主作品）
+├── signbridge_main.c        #   入口：LVGL + 状态机事件循环
+├── signbridge_sm.c          #   状态机：IDLE→DETECTING→RECOGNIZING→RESULT
+├── signbridge_camera.c      #   摄像头帧源（测试图案 + MIPI-CSI 接口预留）
+├── signbridge_infer.c       #   推理管线统一接口
+├── signbridge_infer_tflm.cc #   TFLite Micro 后端（hand_landmark 模型）
+├── signbridge_cls_mlp.c     #   INT8 MLP/TCN 时序分类器（ROMFS 权重加载）
+├── signbridge_ui.c          #   LVGL 界面（结果/置信度/预览/动画）
+├── signbridge_anim.c        #   程序化手语动画播放器
+└── Kconfig / Make.defs / Makefile
 
-| 赛道                  | 教程导航                                                                                                                                                 |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 快应用 / 手表应用创新 | [快应用教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/quickapp/quickapp_guide_index.md)                         |
-| AI 硬件产品创新       | [AI 硬件赛道教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/ai_hardware/ai_hardware_guide_index.md)              |
-| 新硬件适配            | [新硬件适配赛道教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/hardware_porting/hardware_porting_guide_index.md) |
+board/esp32p4_function_ev/   # ESP32-P4-Function-EV-Board 板级适配文档
+├── README.md                #   板级说明与构建命令
+├── pins.md                  #   引脚映射表（DSI/CSI/I2C/背光/触摸）
+└── defconfig.inc            #   各阶段功能增量配置
 
----
+models/                      # 训练产物
+├── sign_classifier_int8.bin #   INT8 量化分类器权重（270KB）
+├── sign_classifier_int8.tflite
+└── vocab.txt                #   50 类手语词表
 
-## 二、第一步：拉取完整工程
+tools/                       # PC 端训练脚本（TensorFlow Keras）
+├── train_sign_classifier_tf.py
+└── train_sign_classifier.py
 
-用组委会提供的命令一键拉取「openvela 全量源码 + 你的专属仓」：
+logs/                        # AI Coding 日志
 
-```bash
+> 注：板级核心代码（esp32p4 arch、esp32p4-function-ev-board 板目录、
+> MIPI-DSI/ILI9881C/GT911 驱动）属于 nuttx 公共仓改动，按提交指南
+> 以 PR 形式提交到 open-vela/nuttx 的 dev-ai-contest-2026 分支。
+```
+
+## 四、运行方式
+
+### 1. 拉取工程
+
+```
 repo init -u https://github.com/open-vela/contest2026_430_zuoyeyushufengzhou \
-  -b dev-ai-contest-2026 -m contest2026_430_zuoyeyushufengzhou.xml
+    -b dev-ai-contest-2026 -m contest2026_430_zuoyeyushufengzhou.xml
 repo sync -c -j8
 ```
 
-同步后，你的整个仓库位于工作区的 `contest2026_430_zuoyeyushufengzhou/`，openvela 全量源码在外层（`nuttx/`、`apps/`、`packages/`、`vendor/` 等）。
+### 2. 编译（make 路径，ESP32-P4）
 
----
+```
+cd nuttx
+export PATH=<riscv32-esp-elf 工具链>:$PATH
 
-## 三、第二步：在哪里写代码
+# 生成 .config（lvgl 基线含显示 + 触摸 + signbridge 应用）
+python3 tools/kconfiglib_olddefconfig.py \
+    boards/risc-v/esp32p4/esp32p4-function-ev-board/configs/lvgl/defconfig
 
-**只在自己的仓目录 `contest2026_430_zuoyeyushufengzhou/` 里开发。** 不同作品形态放在对应子目录，manifest 会通过 `<linkfile>` 把它们**软链**到 openvela 编译树该在的位置——你不用手动 copy：
-
-| 作品形态 | 你的代码放这里             | 系统自动映射到                                 |
-| -------- | -------------------------- | ---------------------------------------------- |
-| 应用     | `app/hello_app/`           | `packages/demos/contest2026_430_hello_app`     |
-| 快应用   | `quickapp/hello_quickapp/` | `packages/apps/contest2026_430_hello_quickapp` |
-| 板级适配 | `board/contest_board/`     | `vendor/openvela/boards/contest2026_430_board` |
-
-> 用不到的形态目录可以删掉；新增作品时按同样规则加子目录，并在 `contest2026_430_zuoyeyushufengzhou.xml` 里补一条 `<linkfile>` 映射即可。**生产仓库（packages/nuttx/vendor 等）零改动。**
-
-建议仓库目录约定（便于评委定位）：
-
-```text
-app/ | quickapp/ | board/   # 你的作品代码
-logs/                       # AI Coding 日志（主动导出后提交，格式见 logs/README.md）
-README.md                   # 作品说明（提交前请改成你自己的，见第六节）
+make CROSSDEV=riscv32-esp-elf- -j8
 ```
 
-> 仓内附带了一个 `.gitignore.example`，给出了**编译产物**等不需要进仓的文件示例。如需启用，`cp .gitignore.example .gitignore` 后按需增删即可。**注意 `logs/` 下最终导出的 AI Coding 日志必须提交，不要忽略。**
->
-> `logs/` 的目录结构与提交格式见 [logs/README.md](logs/README.md)。
+产物：`nuttx/nuttx.bin`（SIMPLE_BOOT，无 MCUboot）。
 
----
+### 3. 烧录
 
-## 四、第三步：编译与运行
-
-编译/运行步骤随作品形态不同而不同，请参考你所在赛道的教程导航：
-
-- 快应用 / 手表应用：[快应用教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/quickapp/quickapp_guide_index.md)（含模拟器与开发板部署）。
-- AI 硬件产品创新：[AI 硬件赛道教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/ai_hardware/ai_hardware_guide_index.md)（环境搭建、编译烧录、Skill 开发）。
-- 新硬件适配：[新硬件适配赛道教程导航](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/hardware_porting/hardware_porting_guide_index.md)（BSP 移植、最小 NSH 基线）。
-
-子目录已通过 manifest 中的 `<linkfile>` 软链进 openvela 编译树，因此构建在 openvela 工作区**根目录**（即你这个仓的上一级）进行。openvela 使用 `build.sh` 作为统一入口，接收一个 **board config 路径**作为参数：
-
-```bash
-# 进入 openvela 工作区根目录（你的仓的上一级）
-cd ..
-
-# 通用语法：第一个参数是 board config 路径，第二个参数可以是 menuconfig / distclean 等
-./build.sh <board-config-path> [menuconfig|distclean] [-j8]
+```
+esptool.py -c esp32p4 -p /dev/ttyACM0 -b 921600 \
+    write_flash -fs detect -fm dio -ff 80m 0x0 nuttx.bin
 ```
 
-> 具体的 board config 路径、目标产物、模拟器/真机部署方式请以你所在赛道的教程导航为准。本仓 `app/` `quickapp/` `board/` 三个示例骨架对应的 Kconfig 选项可通过 `menuconfig` 启用。
+### 4. 运行
 
----
+串口 115200 连接后，NSH 下执行：
 
-## 五、第四步：提交作品
+```
+nsh> signbridge
+```
 
-1. **fork** 你的专属仓 → 开发 → `git commit` 并推送 → 向专属仓发起 **Pull Request**，可**自行 review 并合入**（无需等组委会）。
-2. **AI Coding 日志**：与 AI 工具的对话会自动记录到本机 staging（不会自动上传），需你**主动导出/打包**选定会话到仓内 `logs/` 目录后一并提交。详见[《AI Coding 日志归集与提交手册》](https://github.com/open-vela/docs/blob/dev-ai-contest-2026/zh-cn/contest_2026/ai_coding_log_guide.md)。
-3. 若需改动 **nuttx 等公共仓库**，不在本仓改，而是 fork 对应公共仓、以 PR 提交到 `dev-ai-contest-2026` 分支，由组委会 review 后合入。
-
-> ⏰ **提交作品截止：9 月 20 日**。截止后统一收回 push 权限，仍可查看 / clone。
->
-> 获奖后再按要求将作品 PR 至 openvela 上游对应仓库（走标准 PR + CI 流程）。
-
-### 关于 PR 与 CLA
-
-- 本仓所有改动通过 **Pull Request** 合入（分支保护强制，可自行合入自己的 PR）。
-- 首次贡献需在[**官网签署 CLA**](https://openvela.com/#/community/cla)；PR 上会自动跑 `cla/signature` 检查，在官网签署成功后，在 PR 评论 `/check-cla` 复检即可通过。
-
----
-
-## 六、提交前：把本 README 改成你的作品说明
-
-本文件目前是组委会给的**使用说明书**。**作品提交前，请把它替换成你自己作品的说明**，方便评委快速了解你做了什么、怎么跑起来。建议至少包含以下内容：
-
-```markdown
-# <你的作品名>
-
-## 一、作品简介
-<一句话/一段话说明这个作品是什么、解决什么问题、亮点在哪>
-
-## 二、选题方向
-<快应用 / 手表应用创新 ｜ AI 硬件产品创新 ｜ 新硬件适配 ｜ 自定方向，并简述理由>
-
-## 三、目录结构
-<列出你这个仓里各目录/文件的作用，例如：>
-- `app/xxx/`        — <说明>
-- `board/xxx/`      — <说明>
-- `quickapp/xxx/`   — <说明>
-- `logs/`           — AI Coding 日志
-- `docs/` 或其他    — <说明>
-
-## 四、运行方式
-<拉取工程后，如何编译、烧录/部署、运行的完整步骤；最好能让评委照着一步步复现>
+屏幕显示：标题栏 → 识别结果大字 → 置信度条 → 摄像头预览区
+（当前为测试图案动画）→ 状态栏。状态机自动循环
+IDLE→DETECTING→RECOGNIZING→RESULT 演示完整识别流程。
 
 ## 五、AI Coding 使用说明
-<说明本作品如何借助 AI 辅助开发：
-- 在需求拆解 / 方案设计 / 编码 / 调试 / 文档等环节如何与 AI 协作；
-- AI 对开发效率或质量带来的实际帮助。
-完整对话日志见 logs/ 目录>
-```
 
-> 提示：将会根据「作品本身 + 你的 README 说明 + `logs/` 里的 AI Coding 日志」来理解和评估你的作品，README 写清楚很重要。
+本项目全程使用 AI 辅助开发：
 
----
+- **方案设计**：需求收敛（功能裁剪决策）、架构设计（状态机/推理管线
+  /UI 分层）、竞品与开源方案调研（WLASL 数据集、MediaPipe 模型）
+- **板级移植**：ESP32-P4 arch 源码接线、14 轮构建迭代修复
+  （fork API 差异、HAL 版本 pin、atomic 兼容等均由 AI 定位解决）
+- **驱动开发**：ILI9881C MIPI-DSI 面板初始化、GT911 触摸、
+  LVGL framebuffer 集成
+- **模型训练**：TensorFlow Keras 训练脚本生成、INT8 量化、
+  权重二进制格式设计与 C 加载代码
+- **文档**：README、引脚表、构建指南
 
-## 附：仓库命名规范
+完整对话日志见 logs/ 目录。
 
-`contest2026_<编号>_<队伍名>` — 编号三位零填充；队名 slug（全小写、英文/拼音、连字符）。例：`contest2026_430_zuoyeyushufengzhou`。
-（仓库由组委会统一创建，**每队仅一个仓**，无需自行命名。）
+## 六、当前进度与规划
+
+| 阶段 | 内容 | 状态 |
+|---|---|---|
+| 0 | 工具链 + esp32p4 nsh/lvgl 构建基线 | ✅ |
+| 1 | MIPI-DSI + EK79007 + GT911 + LVGL | ✅ |
+| 2 | MIPI-CSI 摄像头链路 | 🔄 框架就绪，SC2336 传感器驱动开发中 |
+| 3 | TFLite Micro 推理管线 | ✅ 分类器 INT8 权重已训练嵌入 |
+| 4 | signbridge 应用 + LVGL 界面 | ✅ |
+| 5 | 语音播报 / 手语动画 / 低功耗 | 规划中 |
