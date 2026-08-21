@@ -21,6 +21,7 @@
 #include <nuttx/config.h>
 
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
 
