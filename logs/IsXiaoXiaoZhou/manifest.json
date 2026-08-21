@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "team_id": "contest2026_430_zuoyeyushufengzhou",
+  "github_login": "IsXiaoXiaoZhou",
+  "updated_at": "2026-08-21T11:45:00Z",
+  "sessions": [
+    {
+      "session_id": "qoder-signbridge-20260821",
+      "tool": "opencode",
+      "date": "2026-08-21",
+      "started_at": "2026-08-21T09:00:00Z",
+      "last_event_at": "2026-08-21T11:44:59Z",
+      "event_count": 128,
+      "file_path": "logs/IsXiaoXiaoZhou/2026-08-21/opencode__qoder-signbridge-20260821.jsonl",
+      "collection_mode": "backfill-sqlite"
+    }
+  ]
+}
