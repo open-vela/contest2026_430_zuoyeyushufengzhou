@@ -83,13 +83,16 @@ static bool landmarks_stable(const struct signbridge_landmark_s *cur,
  * Public Functions
  ****************************************************************************/
 
+#ifdef CONFIG_TFLITEMICRO
+/* When TFLite Micro is enabled, all signbridge_infer_*() entry points are
+ * implemented in signbridge_infer_tflm.cc; nothing here may define them
+ * again (duplicate C-linkage symbols would silently shadow the TFLM
+ * backend in the archive).
+ */
+#else
 int signbridge_infer_init(void)
 {
-#ifdef CONFIG_TFLITEMICRO
-  syslog(LOG_INFO, "signbridge: TFLM inference init\n");
-#else
   syslog(LOG_INFO, "signbridge: inference stub mode (no TFLM)\n");
-#endif
 
   /* Initialize the MLP sign language classifier */
 
@@ -100,20 +103,13 @@ int signbridge_infer_init(void)
   g_window_count = 0;
   return OK;
 }
+#endif /* !CONFIG_TFLITEMICRO */
 
+#ifndef CONFIG_TFLITEMICRO
 int signbridge_run_hand_landmark(const uint8_t *image,
                                  int width, int height,
                                  struct signbridge_landmark_s *landmarks)
 {
-#ifdef CONFIG_TFLITEMICRO
-  /* TODO: Pre-process image → quantize to INT8 → invoke hand_landmark model
-   * → dequantize output → fill landmarks[]
-   */
-
-  memset(landmarks, 0,
-         SIGNBRIDGE_NUM_LANDMARKS * sizeof(struct signbridge_landmark_s));
-  return -ENOSYS;
-#else
   /* Stub: generate a fixed "open hand" landmark set for pipeline testing.
    * The 21 MediaPipe hand keypoints arranged in a rough hand shape at the
    * center of the image.
@@ -157,29 +153,27 @@ int signbridge_run_hand_landmark(const uint8_t *image,
     }
 
   return OK;
-#endif
 }
+#endif /* !CONFIG_TFLITEMICRO */
 
+#ifndef CONFIG_TFLITEMICRO
 int signbridge_run_classify(const struct signbridge_landmark_s *window,
                             int frames,
                             struct signbridge_result_s *result)
 {
-  /* Run the MLP temporal classifier on the landmark window.
-   * Works in both stub and TFLM modes.
-   */
+  /* Run the MLP temporal classifier on the landmark window. */
 
   extern int signbridge_cls_run(const struct signbridge_landmark_s *window,
                                  int frames,
                                  struct signbridge_result_s *result);
   return signbridge_cls_run(window, frames, result);
 }
+#endif /* !CONFIG_TFLITEMICRO */
 
+#ifndef CONFIG_TFLITEMICRO
 void signbridge_infer_deinit(void)
 {
-#ifdef CONFIG_TFLITEMICRO
-  /* TODO: Free interpreter instances and arena memory */
-#endif
-
   g_window_head  = 0;
   g_window_count = 0;
 }
+#endif /* !CONFIG_TFLITEMICRO */

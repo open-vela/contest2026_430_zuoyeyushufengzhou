@@ -20,6 +20,7 @@
  ****************************************************************************/
 
 #include <nuttx/config.h>
+#include <nuttx/kmalloc.h>
 
 #include <cerrno>
 #include <cstdio>
@@ -199,7 +200,11 @@ static int init_hand_landmark_model(void)
   resolver.AddLogistic();
   resolver.AddStridedSlice();
   resolver.AddPack();
-  resolver.AddCustom();
+
+  /* NOTE: no AddCustom() here - the MediaPipe models use only standard
+   * operators.  (MicroMutableOpResolver::AddCustom() requires a name and
+   * a TfLiteRegistration in this TFLM version.)
+   */
 
   /* 4. Allocate arena in PSRAM */
 

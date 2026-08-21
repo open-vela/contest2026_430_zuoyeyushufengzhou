@@ -40,6 +40,14 @@ MAINSRC = signbridge_main.c
 ifeq ($(CONFIG_TFLITEMICRO),y)
 CXXSRCS = signbridge_infer_tflm.cc
 CXXEXT  = .cc
+CXXFLAGS += ${INCDIR_PREFIX}$(APPDIR)/mlearning/tflite-micro/tflite-micro
+CXXFLAGS += ${INCDIR_PREFIX}$(APPDIR)/math/gemmlowp/gemmlowp
+CXXFLAGS += ${INCDIR_PREFIX}$(APPDIR)/math/kissfft/kissfft
+CXXFLAGS += ${INCDIR_PREFIX}$(APPDIR)/math/ruy/ruy
+
+# Match the tflite-micro library build: strip error strings so
+# MicroPrintf() compiles to a no-op instead of an unresolved symbol.
+CXXFLAGS += -DTF_LITE_STRIP_ERROR_STRINGS
 endif
 
 include $(APPDIR)/Application.mk
