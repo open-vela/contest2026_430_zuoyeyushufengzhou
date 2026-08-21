@@ -28,7 +28,10 @@ STACKSIZE = $(CONFIG_DEMOS_SIGNBRIDGE_STACKSIZE)
 MODULE    = $(CONFIG_DEMOS_SIGNBRIDGE)
 
 CSRCS   = signbridge_sm.c signbridge_infer.c signbridge_cls_mlp.c
+CSRCS  += signbridge_voice.c
 CSRCS  += signbridge_camera.c signbridge_anim.c signbridge_ui.c
+CSRCS  += signbridge_vocab.c signbridge_correct.c signbridge_pm.c
+CSRCS  += signbridge_audio_in.c
 MAINSRC = signbridge_main.c
 
 # TFLite Micro inference backend (C++ when TFLITEMICRO is enabled)

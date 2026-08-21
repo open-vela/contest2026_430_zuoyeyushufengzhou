@@ -84,5 +84,6 @@ void signbridge_sm_step(void);
 enum signbridge_state_e signbridge_sm_state(void);
 const struct signbridge_result_s *signbridge_sm_last_result(void);
 int signbridge_sm_post_result(const struct signbridge_result_s *result);
+const char *signbridge_sm_utterance_text(void);
 
 #endif /* __APP_SIGNBRIDGE_SIGNBRIDGE_H */

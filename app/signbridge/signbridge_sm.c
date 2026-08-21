@@ -40,6 +40,9 @@
 #include "signbridge_infer.h"
 #include "signbridge_voice.h"
 #include "signbridge_camera.h"
+#include "signbridge_audio_in.h"
+#include "signbridge_correct.h"
+#include "signbridge_pm.h"
 
 /****************************************************************************
  * Private Data
@@ -48,6 +51,7 @@
 static enum signbridge_state_e g_state = SIGNBRIDGE_STATE_IDLE;
 static struct signbridge_result_s g_last_result;
 static bool g_result_pending;
+static char g_utterance_text[SIGNBRIDGE_CORRECT_MAX_WORDS * 8 + 1];
 
 /* Frame counter for stub-mode state transitions */
 
@@ -119,6 +123,16 @@ int signbridge_sm_init(void)
 
   signbridge_voice_init();
 
+  /* Initialize voice input (mic capture + VAD + wake word) */
+
+  signbridge_audio_in_init();
+  signbridge_correct_init();
+  signbridge_pm_init();
+
+  /* Start listening for the wake word ("你好，openvela") */
+
+  signbridge_audio_in_start();
+
   signbridge_enter_idle();
   return OK;
 }
@@ -138,6 +152,11 @@ const struct signbridge_result_s *signbridge_sm_last_result(void)
   return NULL;
 }
 
+const char *signbridge_sm_utterance_text(void)
+{
+  return g_utterance_text;
+}
+
 /* Called periodically from the signbridge worker task (~50 ms).
  *
  * State machine flow (stub mode - automatic transitions for demo):
@@ -152,6 +171,23 @@ void signbridge_sm_step(void)
   struct signbridge_landmark_s landmarks[SIGNBRIDGE_NUM_LANDMARKS];
   struct signbridge_result_s result;
   int ret;
+
+  /* Power management tick + wake word check */
+
+  signbridge_pm_step();
+
+  if (signbridge_audio_in_wakeword_heard())
+    {
+      signbridge_audio_in_clear_wakeword();
+      signbridge_pm_activity();
+      syslog(LOG_INFO, "signbridge: wake word detected - entering DETECTING\n");
+
+      if (g_state == SIGNBRIDGE_STATE_IDLE)
+        {
+          g_state = SIGNBRIDGE_STATE_DETECTING;
+          signbridge_enter_detecting();
+        }
+    }
 
   switch (g_state)
     {
@@ -245,9 +281,20 @@ void signbridge_sm_step(void)
         g_result_hold_frames++;
         if (g_result_hold_frames >= STUB_RESULT_HOLD_FRAMES)
           {
+            struct signbridge_utterance_s utterance;
+
             g_result_hold_frames = 0;
             g_result_pending = false;
             g_detect_frames = 0;
+
+            /* Finalize the utterance with the offline correction rules */
+
+            if (signbridge_correct_flush(&utterance) == OK)
+              {
+                strlcpy(g_utterance_text, utterance.text,
+                        sizeof(g_utterance_text));
+              }
+
             g_state = SIGNBRIDGE_STATE_DETECTING;
             signbridge_enter_detecting();
           }
@@ -265,6 +312,21 @@ int signbridge_sm_post_result(const struct signbridge_result_s *result)
 
   g_last_result = *result;
   g_result_pending = true;
+
+  /* Feed the semantic correction module (offline fragment assembly) */
+
+  {
+    struct signbridge_fragment_s frag;
+
+    frag.class_id   = result->class_id;
+    frag.confidence = result->confidence;
+    frag.ts_ms      = (uint32_t)((uint64_t)clock() * 1000 / CLOCKS_PER_SEC);
+    signbridge_correct_add(&frag);
+  }
+
+  /* Any recognition is user activity (keep the screen on) */
+
+  signbridge_pm_activity();
 
   if (g_state == SIGNBRIDGE_STATE_RECOGNIZING)
     {

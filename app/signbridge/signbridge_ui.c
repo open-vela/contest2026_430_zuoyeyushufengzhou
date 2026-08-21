@@ -103,29 +103,10 @@ static enum signbridge_state_e g_last_state = SIGNBRIDGE_STATE_IDLE;
 static uint32_t g_cam_frame_seq;
 static bool g_ui_initialized;
 
-/* Vocabulary table (stubs - populated during training) */
+/* Vocabulary from the shared module (matches training + voice library) */
 
-static const char *g_vocab_table[] =
-{
-  [0]  = "hello",
-  [1]  = "thank you",
-  [2]  = "yes",
-  [3]  = "no",
-  [4]  = "please",
-  [5]  = "sorry",
-  [6]  = "help",
-  [7]  = "water",
-  [8]  = "food",
-  [9]  = "stop",
-  [10] = "go",
-  [11] = "good",
-  [12] = "bad",
-  [13] = "love",
-  [14] = "friend",
-};
-
-#define VOCAB_TABLE_SIZE \
-  (sizeof(g_vocab_table) / sizeof(g_vocab_table[0]))
+#include "signbridge_vocab.h"
+#include "signbridge_pm.h"
 
 /****************************************************************************
  * Private Functions
@@ -397,10 +378,17 @@ void signbridge_ui_update(enum signbridge_state_e state,
   /* Update camera frame counter in info bar */
 
   {
-    char info_buf[64];
+    extern int signbridge_audio_in_level(void);
+    extern enum signbridge_pm_level_e signbridge_pm_level(void);
+    extern const char *signbridge_sm_utterance_text(void);
+    char info_buf[96];
+    int mic_level = signbridge_audio_in_level();
+    const char *pm_str = (signbridge_pm_level() == SIGNBRIDGE_PM_IDLE) ?
+                         "IDLE" : "ACTIVE";
+
     snprintf(info_buf, sizeof(info_buf),
-             "ESP32-P4 | Frame #%lu | Contest #408",
-             (unsigned long)g_cam_frame_seq);
+             "PM:%s MIC:%d%% Frame #%lu",
+             pm_str, mic_level, (unsigned long)g_cam_frame_seq);
     lv_label_set_text(g_info_label, info_buf);
     g_cam_frame_seq++;
   }
@@ -409,19 +397,28 @@ void signbridge_ui_update(enum signbridge_state_e state,
 
   if (state == SIGNBRIDGE_STATE_RESULT && result != NULL)
     {
-      const char *label;
+      const char *label = signbridge_vocab_get(result->class_id);
+      const char *utterance = signbridge_sm_utterance_text();
+      char result_buf[160];
 
-      if (result->class_id >= 0 &&
-          result->class_id < (int)VOCAB_TABLE_SIZE)
-        {
-          label = g_vocab_table[result->class_id];
-        }
-      else
+      if (label == NULL)
         {
           label = "???";
         }
 
-      lv_label_set_text(g_result_label, label);
+      /* Show the word plus the assembled utterance */
+
+      if (utterance != NULL && utterance[0] != '\0')
+        {
+          snprintf(result_buf, sizeof(result_buf), "%s | %s",
+                   label, utterance);
+        }
+      else
+        {
+          snprintf(result_buf, sizeof(result_buf), "%s", label);
+        }
+
+      lv_label_set_text(g_result_label, result_buf);
       lv_bar_set_value(g_conf_bar, result->confidence, LV_ANIM_ON);
     }
 }
