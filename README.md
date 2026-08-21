@@ -10,11 +10,26 @@ TCN/MLP 时序分类，将手语实时翻译为文字并在 7 寸触摸屏上展
 
 核心亮点：
 - **openvela 首次跑通 ESP32-P4-Function-EV-Board**（新硬件适配）：
-  MIPI-DSI 显示（EK79007/ILI9881C）、GT911 触摸、MIPI-CSI 摄像头
-  框架全部基于 NuttX 上游驱动移植打通
-- **完整端侧推理管线**：摄像头帧 → 手部关键点 → 时序分类器
-  （INT8 量化，270KB 权重）→ 识别结果展示
-- **LVGL 实时界面**：识别结果 + 置信度 + 摄像头预览 + 手语动画播放
+  MIPI-DSI 显示（EK79007AD 1024×600）、GT911 触摸（轮询模式）、
+  MIPI-CSI 摄像头、ES8311 音频全部基于 NuttX 驱动打通
+- **完整端侧推理链路**：TFLite Micro 真实推理（MediaPipe hand
+  landmark 模型，7.5MB 内嵌 ROMFS）+ INT8 时序分类器（270KB）
+- **双向沟通闭环**：手语→文字+语音播报（50 词中文词库）；
+  语音输入→VAD+唤醒词（"你好，openvela"）→手语动画
+- **LVGL 实时界面**：识别结果 + 置信度 + 摄像头预览 + 手语动画 +
+  状态栏（功耗级别/麦克风音量）
+
+## 功能完成度（截至 2026-08-21）
+
+| 模块 | 状态 | 说明 |
+|---|---|---|
+| 手语识别（关键点+时序分类） | 75% | TFLM 编译链路全通，真实摄像头帧采集/模型推理待真机 |
+| 语音播报（ES8311+50词词库） | 90% | 驱动+词库完成，待真机出声验证 |
+| 语音输入（I2S 麦克风+VAD+唤醒词） | 70% | 采集+VAD+唤醒词接口完成，唤醒模型待训练 |
+| 手语动画（LVGL） | 85% | 程序化动画完成 |
+| 语义纠错（离线规则版） | 80% | 碎片拼接/去重/模板补全，云端路径留接口 |
+| 功耗管理（空闲关屏/唤醒） | 70% | 基础分级完成，深睡/降频待真机 |
+| 板级硬件驱动（显示/触摸/音频/摄像头） | 85% | 按官方资料权威核对，待真机验证 |
 
 ## 二、选题方向
 
@@ -31,23 +46,33 @@ TCN/MLP 时序分类，将手语实时翻译为文字并在 7 寸触摸屏上展
 app/signbridge/              # 端侧手语识别应用（主作品）
 ├── signbridge_main.c        #   入口：LVGL + 状态机事件循环
 ├── signbridge_sm.c          #   状态机：IDLE→DETECTING→RECOGNIZING→RESULT
-├── signbridge_camera.c      #   摄像头帧源（测试图案 + MIPI-CSI 接口预留）
-├── signbridge_infer.c       #   推理管线统一接口
+├── signbridge_camera.c      #   摄像头帧源（测试图案 + MIPI-CSI/SC2336）
+├── signbridge_infer.c       #   推理管线统一接口（stub/TFLM 切换）
 ├── signbridge_infer_tflm.cc #   TFLite Micro 后端（hand_landmark 模型）
-├── signbridge_cls_mlp.c     #   INT8 MLP/TCN 时序分类器（ROMFS 权重加载）
-├── signbridge_ui.c          #   LVGL 界面（结果/置信度/预览/动画）
+├── signbridge_cls_mlp.c     #   INT8 时序分类器（ROMFS 权重加载）
+├── signbridge_ui.c          #   LVGL 界面（结果/置信度/预览/动画/状态栏）
 ├── signbridge_anim.c        #   程序化手语动画播放器
+├── signbridge_voice.c       #   语音播报（nxplayer + 50 词 WAV）
+├── signbridge_audio_in.c    #   语音输入（I2S 麦克风 + VAD + 唤醒词）
+├── signbridge_correct.c     #   语义纠错（离线规则版）
+├── signbridge_pm.c          #   功耗管理（空闲关屏/活动唤醒）
+├── signbridge_vocab.c       #   共享 50 词中文词表
 └── Kconfig / Make.defs / Makefile
 
 board/esp32p4_function_ev/   # ESP32-P4-Function-EV-Board 板级适配文档
 ├── README.md                #   板级说明与构建命令
-├── pins.md                  #   引脚映射表（DSI/CSI/I2C/背光/触摸）
+├── pins.md                  #   引脚映射表（权威核对版）
 └── defconfig.inc            #   各阶段功能增量配置
 
 models/                      # 训练产物
 ├── sign_classifier_int8.bin #   INT8 量化分类器权重（270KB）
 ├── sign_classifier_int8.tflite
+├── hand_landmarker/         #   MediaPipe hand landmark 模型（7.5MB）
+│   ├── hand_detector.tflite
+│   └── hand_landmarks_detector.tflite
 └── vocab.txt                #   50 类手语词表
+
+media/signs/                 # 语音播报词库（50 个中文 WAV，espeak-ng 生成）
 
 tools/                       # PC 端训练脚本（TensorFlow Keras）
 ├── train_sign_classifier_tf.py

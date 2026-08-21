@@ -12,7 +12,7 @@ ESP32-P4-Function-EV-Board 板级适配增量目录（openvela 新硬件适配�
 | 部件 | 型号/参数 | 接入方式 |
 |---|---|---|
 | 主芯片 | ESP32-P4（双核 RISC-V 400MHz + LP 核） | — |
-| 显示屏 | 7 寸 800×1280，EK79007 控制器 | MIPI-DSI 2 lane |
+| 显示屏 | 7 寸 1024×600，EK79007AD+EK73217 | MIPI-DSI 2 lane |
 | 触摸 | GT911 | I2C |
 | 摄像头 | SC2336 2MP | MIPI-CSI 2 lane，RAW 拜耳 |
 | 像素加速 | PPA（S2M/SRM/Blender） | 帧缩放/OSD |
