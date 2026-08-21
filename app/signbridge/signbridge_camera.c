@@ -75,7 +75,8 @@ static inline uint16_t rgb565_pixel(uint8_t r, uint8_t g, uint8_t b)
 
 static void generate_test_pattern(uint8_t *fb, uint32_t seq)
 {
-  int x, y;
+  int x;
+  int y;
   uint16_t *fb16 = (uint16_t *)fb;
   uint32_t phase = (seq * 6) % 256;
 
@@ -119,8 +120,15 @@ static void generate_test_pattern(uint8_t *fb, uint32_t seq)
 
   /* Fingers (5 vertical bars) */
 
-  static const int finger_dx[] = { -30, -15, 0, 15, 30 };
-  static const int finger_len[] = { 70, 90, 100, 85, 65 };
+  static const int finger_dx[] =
+  {
+    -30, -15, 0, 15, 30
+  };
+
+  static const int finger_len[] =
+  {
+    70, 90, 100, 85, 65
+  };
 
   for (int f = 0; f < 5; f++)
     {
@@ -147,11 +155,15 @@ static void generate_test_pattern(uint8_t *fb, uint32_t seq)
 
   /* 3. Overlay frame counter */
 
-  static const uint16_t digit_color = 0xFFFF; /* white */
+  static const uint16_t digit_color = 0xffff;   /* white */
+  static const int digit_div[] =
+  {
+    1, 10, 100, 1000
+  };
 
   for (int d = 0; d < 4; d++)
     {
-      int digit = (seq / (int[]){1, 10, 100, 1000}[d]) % 10;
+      int digit = (seq / digit_div[d]) % 10;
       int bx = 20 + d * 12;
 
       for (y = 10; y < 22; y++)

@@ -19,5 +19,5 @@
 ############################################################################
 
 ifneq ($(CONFIG_DEMOS_SIGNBRIDGE),)
-CONFIGURED_APPS += $(APPDIR)/packages/demos/contest2026_408_signbridge
+CONFIGURED_APPS += $(APPDIR)/packages/demos/contest2026_430_signbridge
 endif

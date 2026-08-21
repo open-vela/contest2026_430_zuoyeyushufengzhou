@@ -4,31 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * LVGL user interface for the SignBridge sign language recognition
- * terminal on the ESP32-P4-Function-EV-Board (7" 800x1280 display).
+ * terminal on the ESP32-P4-Function-EV-Board (7" 1024x600 landscape
+ * display, EK79007AD).
  *
- * UI layout (portrait 800x1280):
- *
- *   ┌─────────────────────────────────────┐
- *   │         SIGNBRIDGE TITLE             │ y=0..60
- *   ├─────────────────────────────────────┤
- *   │                                     │
- *   │         SIGN RESULT TEXT             │ y=60..200
- *   │         (large, centered)            │
- *   │                                     │
- *   ├─────────────────────────────────────┤
- *   │         [confidence bar]             │ y=200..230
- *   ├─────────────────────────────────────┤
- *   │                                     │
- *   │                                     │
- *   │       CAMERA PREVIEW AREA           │ y=230..930
- *   │       (700x700 placeholder)          │
- *   │                                     │
- *   │                                     │
- *   ├─────────────────────────────────────┤
- *   │     STATUS: IDLE / DETECTING / ...   │ y=930..970
- *   ├─────────────────────────────────────┤
- *   │         FPS / DEBUG INFO             │ y=970..1000
- *   └─────────────────────────────────────┘
+ * UI layout (landscape 1024x600): left column holds the result text,
+ * confidence bar, status and info bars; the right column holds the
+ * 500x500 camera preview canvas.
  *
  ****************************************************************************/
 
@@ -46,35 +27,44 @@
 #include <lvgl/lvgl.h>
 
 #include "signbridge.h"
+#include "signbridge_audio_in.h"
 #include "signbridge_camera.h"
+#include "signbridge_pm.h"
 #include "signbridge_ui.h"
+#include "signbridge_vocab.h"
 
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
 
-/* UI layout constants (800x1280 portrait) */
+/* UI layout constants (1024x600 landscape, EK79007 panel) */
 
-#define UI_SCREEN_W         800
-#define UI_SCREEN_H         1280
+#define UI_SCREEN_W         1024
+#define UI_SCREEN_H         600
 
 #define UI_TITLE_Y          0
-#define UI_TITLE_H          60
+#define UI_TITLE_H          56
 
-#define UI_RESULT_Y         70
-#define UI_RESULT_H         120
+/* Left column (result / confidence / status / info) */
 
-#define UI_BAR_Y            200
-#define UI_BAR_H            25
-
-#define UI_PREVIEW_Y        240
-#define UI_PREVIEW_H        680
-
-#define UI_STATUS_Y         930
+#define UI_LEFT_W           480
+#define UI_RESULT_Y         80
+#define UI_RESULT_H         160
+#define UI_BAR_Y            260
+#define UI_BAR_H            24
+#define UI_STATUS_Y         320
 #define UI_STATUS_H         40
+#define UI_INFO_Y           540
+#define UI_INFO_H           40
 
-#define UI_INFO_Y           975
-#define UI_INFO_H           30
+/* Right column (camera preview) */
+
+#define UI_PREVIEW_X        504
+#define UI_PREVIEW_Y        72
+#define UI_PREVIEW_W        500
+#define UI_PREVIEW_H        512
+#define UI_CANVAS_W         500
+#define UI_CANVAS_H         500
 
 /* Colors */
 
@@ -97,16 +87,11 @@ static lv_obj_t *g_preview_panel;
 static lv_obj_t *g_status_label;
 static lv_obj_t *g_info_label;
 static lv_obj_t *g_preview_canvas;
-static lv_color_t g_canvas_buf[480 * 240];
+static uint16_t g_canvas_buf[UI_CANVAS_W * UI_CANVAS_H];
 
 static enum signbridge_state_e g_last_state = SIGNBRIDGE_STATE_IDLE;
 static uint32_t g_cam_frame_seq;
 static bool g_ui_initialized;
-
-/* Vocabulary from the shared module (matches training + voice library) */
-
-#include "signbridge_vocab.h"
-#include "signbridge_pm.h"
 
 /****************************************************************************
  * Private Functions
@@ -149,8 +134,9 @@ static void create_result_area(lv_obj_t *parent)
   lv_obj_set_style_text_font(g_result_label, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(g_result_label, UI_COLOR_RESULT, 0);
   lv_obj_set_style_text_align(g_result_label, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_width(g_result_label, UI_SCREEN_W - 40);
-  lv_obj_align(g_result_label, LV_ALIGN_TOP_MID, 0, UI_RESULT_Y);
+  lv_label_set_long_mode(g_result_label, LV_LABEL_LONG_WRAP);
+  lv_obj_set_width(g_result_label, UI_LEFT_W - 40);
+  lv_obj_align(g_result_label, LV_ALIGN_TOP_LEFT, 20, UI_RESULT_Y);
 }
 
 static void create_confidence_bar(lv_obj_t *parent)
@@ -158,8 +144,8 @@ static void create_confidence_bar(lv_obj_t *parent)
   g_conf_bar = lv_bar_create(parent);
   lv_bar_set_range(g_conf_bar, 0, 100);
   lv_bar_set_value(g_conf_bar, 0, LV_ANIM_OFF);
-  lv_obj_set_size(g_conf_bar, UI_SCREEN_W - 80, UI_BAR_H);
-  lv_obj_align(g_conf_bar, LV_ALIGN_TOP_MID, 0, UI_BAR_Y);
+  lv_obj_set_size(g_conf_bar, UI_LEFT_W - 80, UI_BAR_H);
+  lv_obj_align(g_conf_bar, LV_ALIGN_TOP_LEFT, 40, UI_BAR_Y);
   lv_obj_set_style_bg_color(g_conf_bar, UI_COLOR_BAR_BG, 0);
   lv_obj_set_style_bg_color(g_conf_bar, UI_COLOR_BAR_IND,
                              LV_PART_INDICATOR);
@@ -168,8 +154,9 @@ static void create_confidence_bar(lv_obj_t *parent)
 static void create_preview_area(lv_obj_t *parent)
 {
   g_preview_panel = lv_obj_create(parent);
-  lv_obj_set_size(g_preview_panel, UI_SCREEN_W - 40, UI_PREVIEW_H);
-  lv_obj_align(g_preview_panel, LV_ALIGN_TOP_MID, 0, UI_PREVIEW_Y);
+  lv_obj_set_size(g_preview_panel, UI_PREVIEW_W, UI_PREVIEW_H);
+  lv_obj_align(g_preview_panel, LV_ALIGN_TOP_LEFT,
+               UI_PREVIEW_X, UI_PREVIEW_Y);
   lv_obj_set_style_bg_color(g_preview_panel, UI_COLOR_PREVIEW, 0);
   lv_obj_set_style_bg_opa(g_preview_panel, LV_OPA_COVER, 0);
   lv_obj_set_style_border_width(g_preview_panel, 2, 0);
@@ -177,22 +164,22 @@ static void create_preview_area(lv_obj_t *parent)
                                 lv_color_hex(0x333355), 0);
   lv_obj_set_style_radius(g_preview_panel, 12, 0);
 
-  /* Camera preview canvas (reduced resolution 480x240) */
+  /* Camera preview canvas (RGB565, UI_CANVAS_W x UI_CANVAS_H) */
 
   g_preview_canvas = lv_canvas_create(g_preview_panel);
-  lv_canvas_set_buffer(g_preview_canvas, g_canvas_buf, 480, 240, LV_COLOR_FORMAT_RGB565);
+  lv_canvas_set_buffer(g_preview_canvas, g_canvas_buf,
+                       UI_CANVAS_W, UI_CANVAS_H,
+                       LV_COLOR_FORMAT_RGB565);
   lv_obj_center(g_preview_canvas);
-  lv_canvas_fill_bg(g_preview_canvas, lv_color_hex(0x0f0f23), LV_OPA_COVER);
-
-  /* Placeholder text (hidden when camera starts) */
+  lv_canvas_fill_bg(g_preview_canvas, lv_color_hex(0x0f0f23),
+                    LV_OPA_COVER);
 
   /* Placeholder text inside preview area */
 
   lv_obj_t *placeholder = lv_label_create(g_preview_panel);
   lv_label_set_text(placeholder,
                     LV_SYMBOL_IMAGE "\n"
-                    "Camera Preview\n"
-                    "(800x700 area)\n\n"
+                    "Camera Preview\n\n"
                     "Connect MIPI-CSI\ncamera to display\nlive feed here");
   lv_obj_set_style_text_color(placeholder, lv_color_hex(0x555577), 0);
   lv_obj_set_style_text_align(placeholder, LV_TEXT_ALIGN_CENTER, 0);
@@ -206,41 +193,46 @@ static void create_status_bar(lv_obj_t *parent)
   lv_label_set_text(g_status_label, state_to_string(SIGNBRIDGE_STATE_IDLE));
   lv_obj_set_style_text_color(g_status_label, UI_COLOR_STATUS, 0);
   lv_obj_set_style_text_font(g_status_label, &lv_font_montserrat_14, 0);
-  lv_obj_align(g_status_label, LV_ALIGN_TOP_MID, 0, UI_STATUS_Y);
+  lv_obj_align(g_status_label, LV_ALIGN_TOP_LEFT, 20, UI_STATUS_Y);
 }
 
 static void create_info_bar(lv_obj_t *parent)
 {
   g_info_label = lv_label_create(parent);
   lv_label_set_text(g_info_label,
-                    "ESP32-P4 | openvela | Contest #408");
+                    "ESP32-P4 | openvela | SignBridge");
   lv_obj_set_style_text_color(g_info_label, lv_color_hex(0x444466), 0);
   lv_obj_set_style_text_font(g_info_label, &lv_font_montserrat_14, 0);
-  lv_obj_align(g_info_label, LV_ALIGN_TOP_MID, 0, UI_INFO_Y);
+  lv_obj_align(g_info_label, LV_ALIGN_TOP_LEFT, 20, UI_INFO_Y);
 }
 
 /****************************************************************************
  * Name: blit_frame_to_canvas
  *
  * Description:
- *   Blit a RGB565 camera frame (640x480) to the LVGL canvas (480x240)
- *   using simple nearest-neighbor downscaling.
+ *   Blit a RGB565 camera frame (640x480) to the LVGL canvas using simple
+ *   nearest-neighbor scaling.  The canvas buffer is declared RGB565, so
+ *   pixels are copied as raw 16-bit values.
  *
  ****************************************************************************/
 
 static void blit_frame_to_canvas(const uint8_t *frame_data,
                                  uint16_t frame_w, uint16_t frame_h)
 {
+  const uint16_t *src;
+  uint16_t *dst;
+  int canvas_w = UI_CANVAS_W;
+  int canvas_h = UI_CANVAS_H;
+  int x;
+  int y;
+
   if (g_preview_canvas == NULL || frame_data == NULL)
     {
       return;
     }
 
-  const uint16_t *src = (const uint16_t *)frame_data;
-  lv_color_t *dst = g_canvas_buf;
-  int canvas_w = 480;
-  int canvas_h = 240;
-  int x, y;
+  src = (const uint16_t *)frame_data;
+  dst = g_canvas_buf;
 
   for (y = 0; y < canvas_h; y++)
     {
@@ -248,13 +240,8 @@ static void blit_frame_to_canvas(const uint8_t *frame_data,
       for (x = 0; x < canvas_w; x++)
         {
           int src_x = (x * frame_w) / canvas_w;
-          uint16_t pixel = src[src_y * frame_w + src_x];
 
-          /* RGB565 → LVGL color */
-
-          dst[y * canvas_w + x].blue  = (pixel & 0x1F) << 3;
-          dst[y * canvas_w + x].green = ((pixel >> 5) & 0x3F) << 2;
-          dst[y * canvas_w + x].red   = ((pixel >> 11) & 0x1F) << 3;
+          dst[y * canvas_w + x] = src[src_y * frame_w + src_x];
         }
     }
 
@@ -317,7 +304,7 @@ int signbridge_ui_init(void)
   g_ui_initialized = true;
   g_last_state = SIGNBRIDGE_STATE_IDLE;
 
-  syslog(LOG_INFO, "signbridge_ui: UI initialized (800x1280)\n");
+  syslog(LOG_INFO, "signbridge_ui: UI initialized (1024x600)\n");
   return OK;
 }
 
@@ -365,12 +352,12 @@ void signbridge_ui_update(enum signbridge_state_e state,
   /* Update camera preview canvas with latest frame */
 
   {
-    extern int signbridge_camera_get_frame(struct signbridge_frame_s *f, uint32_t t);
-    extern void signbridge_camera_release_frame(struct signbridge_frame_s *f);
     struct signbridge_frame_s cam_frame;
+
     if (signbridge_camera_get_frame(&cam_frame, 50) == 0)
       {
-        blit_frame_to_canvas(cam_frame.data, cam_frame.width, cam_frame.height);
+        blit_frame_to_canvas(cam_frame.data, cam_frame.width,
+                             cam_frame.height);
         signbridge_camera_release_frame(&cam_frame);
       }
   }
@@ -378,9 +365,6 @@ void signbridge_ui_update(enum signbridge_state_e state,
   /* Update camera frame counter in info bar */
 
   {
-    extern int signbridge_audio_in_level(void);
-    extern enum signbridge_pm_level_e signbridge_pm_level(void);
-    extern const char *signbridge_sm_utterance_text(void);
     char info_buf[96];
     int mic_level = signbridge_audio_in_level();
     const char *pm_str = (signbridge_pm_level() == SIGNBRIDGE_PM_IDLE) ?
@@ -403,7 +387,7 @@ void signbridge_ui_update(enum signbridge_state_e state,
 
       if (label == NULL)
         {
-          label = "???";
+          label = "...";   /* No confident result for this cycle */
         }
 
       /* Show the word plus the assembled utterance */

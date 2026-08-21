@@ -196,30 +196,57 @@ static int load_weights(const char *path)
       return -ENOMEM;
     }
 
-  /* Parse weight sections */
+  /* Parse weight sections.  Track the buffer end and validate every
+   * advance so a truncated / corrupted weight file cannot cause an
+   * out-of-bounds read.
+   */
 
-  uint8_t *p = g_weight_buf + sizeof(hdr);
+  uint8_t *p   = g_weight_buf + sizeof(hdr);
+  uint8_t *end = g_weight_buf + file_size;
+
+#define CLS_BOUNDS_CHECK(n)                                   \
+  do                                                          \
+    {                                                         \
+      if ((size_t)(end - p) < (size_t)(n))                    \
+        {                                                     \
+          syslog(LOG_ERR, "cls_mlp: weight file truncated\n"); \
+          kmm_free(g_cls_out);                                \
+          g_cls_out = NULL;                                   \
+          kmm_free(g_weight_buf);                             \
+          g_weight_buf = NULL;                                \
+          return -EINVAL;                                     \
+        }                                                     \
+    }                                                         \
+  while (0)
 
   /* Layer 1: w1 (int8) + b1 (float) */
 
+  CLS_BOUNDS_CHECK(8);
   memcpy(&w_size, p, 4); p += 4;
   memcpy(&g_cls_s1, p, 4); p += 4;
+  CLS_BOUNDS_CHECK((size_t)w_size + hdr.hidden1 * 4);
   g_cls_w1 = (const int8_t *)p; p += w_size;
   g_cls_b1 = (const float *)p;  p += hdr.hidden1 * 4;
 
   /* Layer 2: w2 (int8) + b2 (float) */
 
+  CLS_BOUNDS_CHECK(8);
   memcpy(&w_size, p, 4); p += 4;
   memcpy(&g_cls_s2, p, 4); p += 4;
+  CLS_BOUNDS_CHECK((size_t)w_size + hdr.hidden2 * 4);
   g_cls_w2 = (const int8_t *)p; p += w_size;
   g_cls_b2 = (const float *)p;  p += hdr.hidden2 * 4;
 
   /* Layer 3: w3 (int8) + b3 (float) */
 
+  CLS_BOUNDS_CHECK(8);
   memcpy(&w_size, p, 4); p += 4;
   memcpy(&g_cls_s3, p, 4); p += 4;
+  CLS_BOUNDS_CHECK((size_t)w_size + hdr.output_dim * 4);
   g_cls_w3 = (const int8_t *)p; p += w_size;
   g_cls_b3 = (const float *)p;
+
+#undef CLS_BOUNDS_CHECK
 
   g_weights_loaded = true;
 
@@ -236,19 +263,25 @@ static int load_weights(const char *path)
  *
  ****************************************************************************/
 
-static void mlp_forward(const float *input, int input_dim)
+static void mlp_forward(const float *input)
 {
-  int i, j;
+  int i;
+  int j;
 
-  /* Layer 1: input → hidden1 (128 neurons, ReLU) */
+  /* Layer 1: input → hidden1 (128 neurons, ReLU).
+   * The input vector is always CLS_INPUT_DIM long; short landmark
+   * windows are zero padded by the caller.
+   */
 
   for (j = 0; j < CLS_HIDDEN1; j++)
     {
       float sum = g_cls_b1[j];
-      for (i = 0; i < input_dim && i < CLS_INPUT_DIM; i++)
+      for (i = 0; i < CLS_INPUT_DIM; i++)
         {
-          sum += input[i] * ((float)g_cls_w1[i * CLS_HIDDEN1 + j] * g_cls_s1);
+          sum += input[i] *
+                 ((float)g_cls_w1[i * CLS_HIDDEN1 + j] * g_cls_s1);
         }
+
       g_cls_h1[j] = relu(sum);
     }
 
@@ -259,8 +292,10 @@ static void mlp_forward(const float *input, int input_dim)
       float sum = g_cls_b2[j];
       for (i = 0; i < CLS_HIDDEN1; i++)
         {
-          sum += g_cls_h1[i] * ((float)g_cls_w2[i * CLS_HIDDEN2 + j] * g_cls_s2);
+          sum += g_cls_h1[i] *
+                 ((float)g_cls_w2[i * CLS_HIDDEN2 + j] * g_cls_s2);
         }
+
       g_cls_h2[j] = relu(sum);
     }
 
@@ -272,8 +307,10 @@ static void mlp_forward(const float *input, int input_dim)
       float sum = g_cls_b3[j];
       for (i = 0; i < CLS_HIDDEN2; i++)
         {
-          sum += g_cls_h2[i] * ((float)g_cls_w3[i * g_cls_output_dim + j] * g_cls_s3);
+          sum += g_cls_h2[i] *
+                 ((float)g_cls_w3[i * g_cls_output_dim + j] * g_cls_s3);
         }
+
       g_cls_out[j] = sum;
       if (sum > max_val)
         {
@@ -336,9 +373,18 @@ int signbridge_cls_run(const struct signbridge_landmark_s *window,
   int best_idx = 0;
   float best_score = 0.0f;
 
-  if (g_cls_out == NULL)
+  if (g_cls_out == NULL || result == NULL)
     {
       return -ENOMEM;
+    }
+
+  if (window == NULL || frames <= 0)
+    {
+      syslog(LOG_WARNING, "cls_mlp: empty landmark window\n");
+      result->class_id     = -1;
+      result->confidence   = 0;
+      result->timestamp_ms = 0;
+      return OK;
     }
 
   /* Flatten landmark window into input buffer */
@@ -349,6 +395,10 @@ int signbridge_cls_run(const struct signbridge_landmark_s *window,
       count = CLS_INPUT_DIM;
     }
 
+  /* Zero the whole vector first so short windows are zero padded */
+
+  memset(g_input_buf, 0, sizeof(g_input_buf));
+
   for (i = 0; i < count; i++)
     {
       int frame = i / (SIGNBRIDGE_NUM_LANDMARKS * SIGNBRIDGE_LANDMARK_DIM);
@@ -356,21 +406,14 @@ int signbridge_cls_run(const struct signbridge_landmark_s *window,
       int lmk   = rem / SIGNBRIDGE_LANDMARK_DIM;
       int coord = rem % SIGNBRIDGE_LANDMARK_DIM;
 
-      if (frame < frames)
-        {
-          const struct signbridge_landmark_s *l =
-              &window[frame * SIGNBRIDGE_NUM_LANDMARKS + lmk];
+      const struct signbridge_landmark_s *l =
+          &window[frame * SIGNBRIDGE_NUM_LANDMARKS + lmk];
 
-          switch (coord)
-            {
-              case 0: g_input_buf[i] = l->x; break;
-              case 1: g_input_buf[i] = l->y; break;
-              case 2: g_input_buf[i] = l->z; break;
-            }
-        }
-      else
+      switch (coord)
         {
-          g_input_buf[i] = 0.0f;
+          case 0: g_input_buf[i] = l->x; break;
+          case 1: g_input_buf[i] = l->y; break;
+          case 2: g_input_buf[i] = l->z; break;
         }
     }
 
@@ -378,7 +421,7 @@ int signbridge_cls_run(const struct signbridge_landmark_s *window,
 
   if (g_weights_loaded)
     {
-      mlp_forward(g_input_buf, count);
+      mlp_forward(g_input_buf);
     }
   else
     {
@@ -387,8 +430,10 @@ int signbridge_cls_run(const struct signbridge_landmark_s *window,
       static uint32_t stub_seq = 0;
       for (i = 0; i < g_cls_output_dim; i++)
         {
-          g_cls_out[i] = (i == (stub_seq % g_cls_output_dim)) ? 0.9f : 0.01f;
+          g_cls_out[i] = (i == (stub_seq % g_cls_output_dim)) ?
+              0.9f : 0.01f;
         }
+
       stub_seq++;
     }
 

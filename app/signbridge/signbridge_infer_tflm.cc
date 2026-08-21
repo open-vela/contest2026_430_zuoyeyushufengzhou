@@ -259,6 +259,13 @@ int signbridge_infer_init(void)
       return ret;
     }
 
+  /* The temporal classifier (INT8 MLP, signbridge_cls_mlp.c) is shared
+   * by both backends and must be initialized here as well.
+   */
+
+  extern void signbridge_cls_init(void);
+  signbridge_cls_init();
+
   syslog(LOG_INFO, "signbridge: TFLM inference ready\n");
 #else
   syslog(LOG_INFO, "signbridge: inference stub mode (no TFLM)\n");
@@ -308,25 +315,11 @@ int signbridge_run_hand_landmark(const uint8_t *image,
   return OK;
 }
 
-int signbridge_run_classify(const struct signbridge_landmark_s *window,
-                            int frames,
-                            struct signbridge_result_s *result)
-{
-#ifdef CONFIG_TFLITEMICRO
-  /* TODO: Flatten landmark window → quantize → invoke classifier
-   * → softmax → argmax → fill result
-   */
-#endif
-
-  UNUSED(window);
-  UNUSED(frames);
-
-  result->class_id    = 0;
-  result->confidence  = 95;
-  result->timestamp_ms = 0;
-
-  return OK;
-}
+/* signbridge_run_classify() lives in signbridge_infer.c for all backends
+ * (it falls back to the internally accumulated landmark window and, with
+ * CONFIG_TFLITEMICRO, reports "no confident result" until the TFLM
+ * temporal classifier invoke is wired up).
+ */
 
 void signbridge_infer_deinit(void)
 {

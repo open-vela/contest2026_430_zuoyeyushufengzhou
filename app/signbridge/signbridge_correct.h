@@ -5,9 +5,10 @@
  *
  * Semantic correction module for SignBridge.
  *
- * Plan: 云端小模型对端侧识别碎片（词 + 置信度 + 时间戳）做上下文拼接
- * 与纠错。离线降级版：纯本地规则拼接 —— 去重、高频词优先、常用语
- * 模板补全。云端路径留接口，WiFi6（ESP32-C6 SDIO）就绪后接入。
+ * Plan: 云端小模型对端侧识别碎片（词 + 置信度 + 时间戳）做上下文
+ * 拼接与纠错。离线降级版：纯本地规则拼接 —— 去重、高频词优先、
+ * 常用语模板补全。云端路径留接口，WiFi6（ESP32-C6 SDIO）就绪后
+ * 接入。
  *
  ****************************************************************************/
 
@@ -48,8 +49,8 @@ struct signbridge_utterance_s
 {
   char     text[SIGNBRIDGE_CORRECT_MAX_WORDS * 8 + 1];  /* 纠错后文本 */
   uint8_t  words[SIGNBRIDGE_CORRECT_MAX_WORDS];         /* 词 id 序列 */
-  uint8_t  nwords;                                       /* 词数       */
-  float    score;                                        /* 整体置信度 */
+  uint8_t  nwords;                                      /* 词数       */
+  float    score;                                       /* 整体置信度 */
 };
 
 #ifdef __cplusplus

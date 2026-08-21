@@ -39,7 +39,10 @@
 /* TODO: TFLite Micro interpreter instances, model buffers, arena */
 #endif
 
-/* Landmark history ring buffer for temporal classifier */
+/* Landmark history ring buffer for the temporal classifier.
+ * g_landmark_window stores frames in chronological order while the ring
+ * is not yet full, so it can be handed to the classifier directly.
+ */
 
 static struct signbridge_landmark_s
     g_landmark_window[SIGNBRIDGE_WINDOW_FRAMES]
@@ -47,36 +50,75 @@ static struct signbridge_landmark_s
 static int g_window_head;
 static int g_window_count;
 
-/****************************************************************************
- * Private Functions
- ****************************************************************************/
+/* Staging buffer used to present a wrapped ring in chronological order */
+
+static struct signbridge_landmark_s
+    g_window_staging[SIGNBRIDGE_WINDOW_FRAMES]
+                    [SIGNBRIDGE_NUM_LANDMARKS];
 
 /****************************************************************************
- * Name: landmarks_stable
- *
- * Description:
- *   Check if the landmark positions are stable (hand is present and
- *   not moving too fast) by computing the mean squared displacement
- *   between consecutive frames.
- *
+ * Public Functions: landmark window (shared by all backends)
  ****************************************************************************/
 
-static bool landmarks_stable(const struct signbridge_landmark_s *cur,
-                             const struct signbridge_landmark_s *prev,
-                             float threshold)
+void signbridge_infer_push_landmarks(
+    const struct signbridge_landmark_s *frame)
 {
-  float sum = 0.0f;
-  int i;
-
-  for (i = 0; i < SIGNBRIDGE_NUM_LANDMARKS; i++)
+  if (frame == NULL)
     {
-      float dx = cur[i].x - prev[i].x;
-      float dy = cur[i].y - prev[i].y;
-      float dz = cur[i].z - prev[i].z;
-      sum += dx * dx + dy * dy + dz * dz;
+      return;
     }
 
-  return (sum / SIGNBRIDGE_NUM_LANDMARKS) < threshold;
+  memcpy(g_landmark_window[g_window_head], frame,
+         SIGNBRIDGE_NUM_LANDMARKS * sizeof(*frame));
+
+  g_window_head = (g_window_head + 1) % SIGNBRIDGE_WINDOW_FRAMES;
+  if (g_window_count < SIGNBRIDGE_WINDOW_FRAMES)
+    {
+      g_window_count++;
+    }
+}
+
+void signbridge_infer_reset_window(void)
+{
+  g_window_head  = 0;
+  g_window_count = 0;
+}
+
+void signbridge_infer_get_window(
+    const struct signbridge_landmark_s **window, int *frames)
+{
+  if (window == NULL || frames == NULL)
+    {
+      return;
+    }
+
+  if (g_window_count < SIGNBRIDGE_WINDOW_FRAMES)
+    {
+      /* The ring has not wrapped yet: frames sit in chronological order
+       * starting at index 0.
+       */
+
+      *window = &g_landmark_window[0][0];
+      *frames = g_window_count;
+    }
+  else
+    {
+      /* The ring wrapped: unwind it into the staging buffer so the
+       * classifier always sees the window in chronological order.
+       * g_window_head points at the oldest frame in that case.
+       */
+
+      int first = g_window_head;
+      int n1 = SIGNBRIDGE_WINDOW_FRAMES - first;
+
+      memcpy(g_window_staging[0], g_landmark_window[first],
+             n1 * sizeof(g_landmark_window[0]));
+      memcpy(g_window_staging[n1], g_landmark_window[0],
+             first * sizeof(g_landmark_window[0]));
+
+      *window = &g_window_staging[0][0];
+      *frames = SIGNBRIDGE_WINDOW_FRAMES;
+    }
 }
 
 /****************************************************************************
@@ -84,10 +126,12 @@ static bool landmarks_stable(const struct signbridge_landmark_s *cur,
  ****************************************************************************/
 
 #ifdef CONFIG_TFLITEMICRO
-/* When TFLite Micro is enabled, all signbridge_infer_*() entry points are
- * implemented in signbridge_infer_tflm.cc; nothing here may define them
- * again (duplicate C-linkage symbols would silently shadow the TFLM
- * backend in the archive).
+/* When TFLite Micro is enabled, signbridge_infer_init() and
+ * signbridge_run_hand_landmark() are implemented in
+ * signbridge_infer_tflm.cc; nothing here may define them again
+ * (duplicate C-linkage symbols would silently shadow the TFLM backend
+ * in the archive).  The temporal classifier below (INT8 MLP) is shared
+ * by both backends.
  */
 #else
 int signbridge_infer_init(void)
@@ -156,19 +200,31 @@ int signbridge_run_hand_landmark(const uint8_t *image,
 }
 #endif /* !CONFIG_TFLITEMICRO */
 
-#ifndef CONFIG_TFLITEMICRO
+/****************************************************************************
+ * Public Functions
+ ****************************************************************************/
+
 int signbridge_run_classify(const struct signbridge_landmark_s *window,
                             int frames,
                             struct signbridge_result_s *result)
 {
-  /* Run the MLP temporal classifier on the landmark window. */
+  /* Run the INT8 MLP temporal classifier on the landmark window (shared
+   * by the stub and the TFLM backends; the TFLM variant of the temporal
+   * classifier is not exported yet).  A NULL window falls back to the
+   * internally accumulated one.
+   */
 
   extern int signbridge_cls_run(const struct signbridge_landmark_s *window,
                                  int frames,
                                  struct signbridge_result_s *result);
+
+  if (window == NULL || frames <= 0)
+    {
+      signbridge_infer_get_window(&window, &frames);
+    }
+
   return signbridge_cls_run(window, frames, result);
 }
-#endif /* !CONFIG_TFLITEMICRO */
 
 #ifndef CONFIG_TFLITEMICRO
 void signbridge_infer_deinit(void)

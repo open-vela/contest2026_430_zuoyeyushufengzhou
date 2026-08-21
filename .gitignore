@@ -18,3 +18,8 @@ out/
 *.elf
 *.hex
 *.map
+
+# App build intermediates
+.built
+.depend
+Make.dep

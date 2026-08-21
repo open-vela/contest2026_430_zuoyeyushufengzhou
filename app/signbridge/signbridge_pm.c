@@ -17,6 +17,8 @@
 #include <syslog.h>
 #include <time.h>
 
+#include <nuttx/arch.h>
+
 #include "signbridge_pm.h"
 
 /****************************************************************************
@@ -29,6 +31,27 @@ static uint32_t g_idle_ms;
 /****************************************************************************
  * Private Functions
  ****************************************************************************/
+
+#ifdef CONFIG_ESP32P4_FUNCTION_EV_LCD
+/* Board backlight control (esp32p4_display.c).  Declared weak so the
+ * module also links on targets without a board backlight (e.g. sim).
+ */
+
+extern int funev_lcd_backlight(bool on) __attribute__((weak));
+
+static void signbridge_pm_backlight(bool on)
+{
+  if (funev_lcd_backlight != NULL)
+    {
+      funev_lcd_backlight(on);
+    }
+}
+#else
+static void signbridge_pm_backlight(bool on)
+{
+  UNUSED(on);
+}
+#endif
 
 /****************************************************************************
  * Name: signbridge_pm_now_ms
@@ -94,10 +117,7 @@ void signbridge_pm_step(void)
       g_level = SIGNBRIDGE_PM_IDLE;
       syslog(LOG_INFO, "pm: idle - screen off\n");
 
-      /* Board backlight control (esp32p4_display.c) */
-
-      extern void funev_lcd_backlight(bool on);
-      funev_lcd_backlight(false);
+      signbridge_pm_backlight(false);
 
       /* TODO(real hw): CPU frequency scaling - the esp-clk HAL is not
        * wired into this NuttX port yet (no esp_set_cpu_freq API).
@@ -122,8 +142,7 @@ void signbridge_pm_activity(void)
       g_level = SIGNBRIDGE_PM_ACTIVE;
       syslog(LOG_INFO, "pm: active - screen on\n");
 
-      extern void funev_lcd_backlight(bool on);
-      funev_lcd_backlight(true);
+      signbridge_pm_backlight(true);
     }
 }
 

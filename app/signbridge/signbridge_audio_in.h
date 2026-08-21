@@ -37,9 +37,12 @@
 #define SIGNBRIDGE_WAKE_WORD_ZH   "你好，openvela"
 #define SIGNBRIDGE_WAKE_WORD_EN   "Hello, openvela"
 
-/* Capture configuration (16 kHz / 16 bit / mono, standard for ASR) */
+/* Capture configuration (16 kHz / 16 bit / mono, standard for ASR).
+ * The board glue (esp32p4_es8311.c) registers the ES8311 record path as
+ * /dev/audio/pcm_in0; /dev/audio/pcm0 is the playback (pcm decode) device.
+ */
 
-#define SIGNBRIDGE_AUDIO_IN_DEV       "/dev/audio/pcm0"
+#define SIGNBRIDGE_AUDIO_IN_DEV       "/dev/audio/pcm_in0"
 #define SIGNBRIDGE_AUDIO_IN_RATE      16000
 #define SIGNBRIDGE_AUDIO_IN_CHANNELS  1
 #define SIGNBRIDGE_AUDIO_IN_BPS       16

@@ -11,6 +11,10 @@
 #ifndef __APP_SIGNBRIDGE_SIGNBRIDGE_ANIM_H
 #define __APP_SIGNBRIDGE_SIGNBRIDGE_ANIM_H
 
+/****************************************************************************
+ * Included Files
+ ****************************************************************************/
+
 #include <nuttx/config.h>
 #include <stdint.h>
 #include <stdbool.h>

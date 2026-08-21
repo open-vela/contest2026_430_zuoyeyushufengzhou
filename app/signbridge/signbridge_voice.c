@@ -56,7 +56,8 @@ int signbridge_voice_init(void)
   ret = nxplayer_setdevice(g_player, SIGNBRIDGE_AUDIO_DEV);
   if (ret != OK)
     {
-      syslog(LOG_WARNING, "voice: setdevice %s failed: %d (will auto-search)\n",
+      syslog(LOG_WARNING,
+             "voice: setdevice %s failed: %d (will auto-search)\n",
              SIGNBRIDGE_AUDIO_DEV, ret);
     }
 

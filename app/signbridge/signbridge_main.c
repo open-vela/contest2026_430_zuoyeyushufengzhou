@@ -49,7 +49,8 @@ int signbridge_main(int argc, char *argv[])
   uint32_t sleep_ms;
   int ret;
 
-  syslog(LOG_INFO, "signbridge: starting on-device sign language terminal\n");
+  syslog(LOG_INFO,
+         "signbridge: starting on-device sign language terminal\n");
 
   /* 1. Initialize state machine (also calls signbridge_infer_init) */
 
@@ -67,6 +68,7 @@ int signbridge_main(int argc, char *argv[])
   if (ret < 0)
     {
       syslog(LOG_ERR, "signbridge: ui_init failed: %d\n", ret);
+
       /* Continue without UI - serial output still works */
     }
 #endif

@@ -34,7 +34,9 @@
 
 #include <debug.h>
 #include <errno.h>
+#include <string.h>
 #include <syslog.h>
+#include <time.h>
 
 #include "signbridge.h"
 #include "signbridge_infer.h"
@@ -61,10 +63,10 @@ static int g_result_hold_frames;
 
 /* Stub: auto-transition from IDLE to DETECTING after 2 seconds */
 
-#define STUB_IDLE_TO_DETECT_FRAMES    40   /* 40 x 50 ms = 2 s */
-#define STUB_DETECT_TO_RECOGNIZE  60   /* 3 s */
-#define STUB_RECOGNIZE_TO_RESULT  40   /* 2 s */
-#define STUB_RESULT_HOLD_FRAMES   100  /* 5 s */
+#define STUB_IDLE_TO_DETECT_FRAMES  40   /* 40 x 50 ms = 2 s */
+#define STUB_DETECT_TO_RECOGNIZE    60   /* 3 s */
+#define STUB_RECOGNIZE_TO_RESULT    40   /* 2 s */
+#define STUB_RESULT_HOLD_FRAMES     100  /* 5 s */
 
 /****************************************************************************
  * Private Functions
@@ -180,7 +182,8 @@ void signbridge_sm_step(void)
     {
       signbridge_audio_in_clear_wakeword();
       signbridge_pm_activity();
-      syslog(LOG_INFO, "signbridge: wake word detected - entering DETECTING\n");
+      syslog(LOG_INFO,
+             "signbridge: wake word detected - entering DETECTING\n");
 
       if (g_state == SIGNBRIDGE_STATE_IDLE)
         {
@@ -210,6 +213,7 @@ void signbridge_sm_step(void)
         /* Get a camera frame and run hand landmark detection.
          * Stub: auto-transition after N frames.
          * Real impl: check if hand landmark confidence > threshold.
+         * Every valid landmark frame feeds the classifier window.
          */
 
         {
@@ -220,6 +224,11 @@ void signbridge_sm_step(void)
               ret = signbridge_run_hand_landmark(
                   cam_frame.data, cam_frame.width, cam_frame.height,
                   landmarks);
+              if (ret == OK)
+                {
+                  signbridge_infer_push_landmarks(landmarks);
+                }
+
               signbridge_camera_release_frame(&cam_frame);
             }
         }
@@ -252,6 +261,11 @@ void signbridge_sm_step(void)
               ret = signbridge_run_hand_landmark(
                   cam_frame.data, cam_frame.width, cam_frame.height,
                   landmarks);
+              if (ret == OK)
+                {
+                  signbridge_infer_push_landmarks(landmarks);
+                }
+
               signbridge_camera_release_frame(&cam_frame);
             }
         }
@@ -261,9 +275,13 @@ void signbridge_sm_step(void)
             g_classify_frames++;
             if (g_classify_frames >= STUB_RECOGNIZE_TO_RESULT)
               {
-                /* Run classifier */
+                /* Run the classifier on the accumulated landmark window */
 
-                ret = signbridge_run_classify(NULL, 0, &result);
+                const struct signbridge_landmark_s *window;
+                int frames;
+
+                signbridge_infer_get_window(&window, &frames);
+                ret = signbridge_run_classify(window, frames, &result);
                 if (ret == OK)
                   {
                     signbridge_sm_post_result(&result);
@@ -287,6 +305,10 @@ void signbridge_sm_step(void)
             g_result_pending = false;
             g_detect_frames = 0;
 
+            /* New gesture cycle: clear the landmark window */
+
+            signbridge_infer_reset_window();
+
             /* Finalize the utterance with the offline correction rules */
 
             if (signbridge_correct_flush(&utterance) == OK)
@@ -305,6 +327,8 @@ void signbridge_sm_step(void)
 
 int signbridge_sm_post_result(const struct signbridge_result_s *result)
 {
+  struct signbridge_fragment_s frag;
+
   if (result == NULL)
     {
       return -EINVAL;
@@ -315,14 +339,21 @@ int signbridge_sm_post_result(const struct signbridge_result_s *result)
 
   /* Feed the semantic correction module (offline fragment assembly) */
 
-  {
-    struct signbridge_fragment_s frag;
+  frag.class_id = result->class_id;
 
-    frag.class_id   = result->class_id;
-    frag.confidence = result->confidence;
-    frag.ts_ms      = (uint32_t)((uint64_t)clock() * 1000 / CLOCKS_PER_SEC);
-    signbridge_correct_add(&frag);
-  }
+  /* The correction module works in the 0..1 confidence domain while the
+   * recognition result carries a 0..100 percent value.
+   */
+
+  frag.confidence = (float)result->confidence / 100.0f;
+  frag.ts_ms = (uint32_t)((uint64_t)clock() * 1000 / CLOCKS_PER_SEC);
+
+  /* Negative class_id means "no confident result": skip the fragment */
+
+  if (frag.class_id >= 0)
+    {
+      signbridge_correct_add(&frag);
+    }
 
   /* Any recognition is user activity (keep the screen on) */
 
@@ -333,9 +364,12 @@ int signbridge_sm_post_result(const struct signbridge_result_s *result)
       g_state = SIGNBRIDGE_STATE_RESULT;
       signbridge_enter_result();
 
-      /* Announce the recognized sign by voice */
+      /* Announce the recognized sign by voice (skip invalid results) */
 
-      signbridge_voice_play(result->class_id);
+      if (result->class_id >= 0)
+        {
+          signbridge_voice_play(result->class_id);
+        }
     }
 
   return OK;

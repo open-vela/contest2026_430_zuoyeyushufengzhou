@@ -338,23 +338,31 @@ int signbridge_audio_in_start(void)
       return -errno;
     }
 
-  /* 5. Allocate and enqueue capture buffers */
+  /* 5. Allocate and enqueue capture buffers.
+   *
+   * AUDIOIOC_ALLOCBUFFER / AUDIOIOC_FREEBUFFER take a
+   * struct audio_buf_desc_s (see nuttx/include/nuttx/audio/audio.h and
+   * the nxlooper reference usage), not a bare ap_buffer_s pointer.
+   */
 
   priv->nbufs = 0;
   for (i = 0; i < SIGNBRIDGE_AUDIO_IN_NBUFS; i++)
     {
+      struct audio_buf_desc_s buf_desc;
       FAR struct ap_buffer_s *apb = NULL;
 
+      buf_desc.numbytes  = SIGNBRIDGE_AUDIO_IN_FRAME_BYTES;
+      buf_desc.u.pbuffer = &apb;
+
       ret = ioctl(priv->fd, AUDIOIOC_ALLOCBUFFER,
-                  (unsigned long)&apb);
-      if (ret < 0)
+                  (unsigned long)&buf_desc);
+      if (ret != (int)sizeof(buf_desc) || apb == NULL)
         {
           syslog(LOG_WARNING, "audio_in: ALLOCBUFFER[%d] failed: %d\n",
                  i, errno);
           break;
         }
 
-      apb->nbytes = SIGNBRIDGE_AUDIO_IN_FRAME_BYTES;
       apb->curbyte = 0;
       apb->flags  = AUDIO_APB_OUTPUT_ENQUEUED;
       priv->buffers[i] = apb;
@@ -443,8 +451,11 @@ int signbridge_audio_in_stop(void)
     {
       if (priv->buffers[i] != NULL)
         {
+          struct audio_buf_desc_s buf_desc;
+
+          buf_desc.u.buffer = priv->buffers[i];
           ioctl(priv->fd, AUDIOIOC_FREEBUFFER,
-                (unsigned long)priv->buffers[i]);
+                (unsigned long)&buf_desc);
           priv->buffers[i] = NULL;
         }
     }
@@ -492,6 +503,45 @@ bool signbridge_audio_in_wakeword_heard(void)
 void signbridge_audio_in_clear_wakeword(void)
 {
   g_audio_in.wakeword = false;
+}
+
+#else /* !CONFIG_AUDIO */
+
+/* Stub implementations when the audio subsystem is not built in */
+
+int signbridge_audio_in_init(void)
+{
+  syslog(LOG_WARNING, "audio_in: CONFIG_AUDIO disabled, stubbed\n");
+  return OK;
+}
+
+int signbridge_audio_in_start(void)
+{
+  return OK;
+}
+
+int signbridge_audio_in_stop(void)
+{
+  return OK;
+}
+
+enum signbridge_vad_state_e signbridge_audio_in_vad_state(void)
+{
+  return SIGNBRIDGE_VAD_SILENCE;
+}
+
+int signbridge_audio_in_level(void)
+{
+  return 0;
+}
+
+bool signbridge_audio_in_wakeword_heard(void)
+{
+  return false;
+}
+
+void signbridge_audio_in_clear_wakeword(void)
+{
 }
 
 #endif /* CONFIG_AUDIO */

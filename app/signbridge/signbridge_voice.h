@@ -11,6 +11,10 @@
 #ifndef __APP_SIGNBRIDGE_SIGNBRIDGE_VOICE_H
 #define __APP_SIGNBRIDGE_SIGNBRIDGE_VOICE_H
 
+/****************************************************************************
+ * Included Files
+ ****************************************************************************/
+
 #include <nuttx/config.h>
 #include <stdbool.h>
 

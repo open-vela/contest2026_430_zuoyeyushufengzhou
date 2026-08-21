@@ -84,6 +84,49 @@ int signbridge_run_hand_landmark(const uint8_t *image,
                                  struct signbridge_landmark_s *landmarks);
 
 /****************************************************************************
+ * Name: signbridge_infer_push_landmarks
+ *
+ * Description:
+ *   Append one landmark frame to the internal sliding window consumed by
+ *   the temporal classifier.  Called once per camera frame while a hand
+ *   is tracked (DETECTING / RECOGNIZING states).
+ *
+ * Input Parameters:
+ *   frame - Array of SIGNBRIDGE_NUM_LANDMARKS landmark positions
+ *
+ ****************************************************************************/
+
+void signbridge_infer_push_landmarks(
+    const struct signbridge_landmark_s *frame);
+
+/****************************************************************************
+ * Name: signbridge_infer_reset_window
+ *
+ * Description:
+ *   Clear the landmark sliding window (new gesture starts).
+ *
+ ****************************************************************************/
+
+void signbridge_infer_reset_window(void);
+
+/****************************************************************************
+ * Name: signbridge_infer_get_window
+ *
+ * Description:
+ *   Get the accumulated landmark window in chronological order for the
+ *   temporal classifier.
+ *
+ * Output Parameters:
+ *   window - Receives a pointer to the contiguous frame array
+ *   frames - Receives the number of accumulated frames
+ *            (<= SIGNBRIDGE_WINDOW_FRAMES)
+ *
+ ****************************************************************************/
+
+void signbridge_infer_get_window(
+    const struct signbridge_landmark_s **window, int *frames);
+
+/****************************************************************************
  * Name: signbridge_run_classify
  *
  * Description:

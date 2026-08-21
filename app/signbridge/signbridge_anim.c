@@ -253,7 +253,9 @@ static void interpolate_pose(const struct hand_pose_s *a,
 static void draw_circle(uint16_t *buf, int cx, int cy, int r,
                         uint16_t color)
 {
-  int x, y;
+  int x;
+  int y;
+
   for (y = cy - r; y <= cy + r; y++)
     {
       for (x = cx - r; x <= cx + r; x++)
@@ -283,9 +285,11 @@ static void draw_line(uint16_t *buf, int x0, int y0, int x1, int y1,
   int err = dx - dy;
   int hw = width / 2;
 
-  for (;;)
+  for (; ; )
     {
-      int wx, wy;
+      int wx;
+      int wy;
+
       for (wy = -hw; wy <= hw; wy++)
         {
           for (wx = -hw; wx <= hw; wx++)
@@ -321,28 +325,49 @@ static void draw_line(uint16_t *buf, int x0, int y0, int x1, int y1,
 static void render_hand(uint16_t *buf, const struct hand_pose_s *pose)
 {
   int i;
-  int sx, sy;
+  int sx;
+  int sy;
 
   /* Draw bones (connections between joints) */
 
   static const int bone_pairs[][2] =
   {
-    {0,1}, {1,2}, {2,3}, {3,4},       /* Thumb */
-    {0,5}, {5,6}, {6,7}, {7,8},       /* Index */
-    {0,9}, {9,10}, {10,11}, {11,12},  /* Middle */
-    {0,13}, {13,14}, {14,15}, {15,16},/* Ring */
-    {0,17}, {17,18}, {18,19}, {19,20},/* Pinky */
-    {5,9}, {9,13}, {13,17},           /* Palm */
+    { 0, 1 },   /* Thumb    */
+    { 1, 2 },
+    { 2, 3 },
+    { 3, 4 },
+    { 0, 5 },   /* Index    */
+    { 5, 6 },
+    { 6, 7 },
+    { 7, 8 },
+    { 0, 9 },   /* Middle   */
+    { 9, 10 },
+    { 10, 11 },
+    { 11, 12 },
+    { 0, 13 },  /* Ring     */
+    { 13, 14 },
+    { 14, 15 },
+    { 15, 16 },
+    { 0, 17 },  /* Pinky    */
+    { 17, 18 },
+    { 18, 19 },
+    { 19, 20 },
+    { 5, 9 },   /* Palm     */
+    { 9, 13 },
+    { 13, 17 },
   };
 
   for (i = 0; i < (int)(sizeof(bone_pairs) / sizeof(bone_pairs[0])); i++)
     {
       int a = bone_pairs[i][0];
       int b = bone_pairs[i][1];
+      int ex;
+      int ey;
+
       sx = (int)(pose->kp[a].x * ANIM_W);
       sy = (int)(pose->kp[a].y * ANIM_H);
-      int ex = (int)(pose->kp[b].x * ANIM_W);
-      int ey = (int)(pose->kp[b].y * ANIM_H);
+      ex = (int)(pose->kp[b].x * ANIM_W);
+      ey = (int)(pose->kp[b].y * ANIM_H);
       draw_line(buf, sx, sy, ex, ey, BONE_COLOR, BONE_WIDTH);
     }
 
@@ -350,10 +375,12 @@ static void render_hand(uint16_t *buf, const struct hand_pose_s *pose)
 
   for (i = 0; i < 21; i++)
     {
+      uint16_t jc;
+
       sx = (int)(pose->kp[i].x * ANIM_W);
       sy = (int)(pose->kp[i].y * ANIM_H);
-      uint16_t jc = (i == 0 || i == 4 || i == 8 || i == 12 || i == 16 || i == 20)
-                      ? 0xF800 : 0xF7BE;
+      jc = (i == 0 || i == 4 || i == 8 || i == 12 || i == 16 ||
+            i == 20) ? 0xf800 : 0xf7be;
       draw_circle(buf, sx, sy, JOINT_RADIUS, jc);
     }
 }
@@ -367,7 +394,8 @@ static void get_pose_for_sign(int class_id, float progress,
 {
   /* Generate animation based on sign class */
 
-  struct hand_pose_s p1, p2;
+  struct hand_pose_s p1;
+  struct hand_pose_s p2;
 
   switch (class_id % 15)
     {

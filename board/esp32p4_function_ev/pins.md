@@ -69,5 +69,6 @@
 
 ## 待真机核对项
 
-- 触摸 GT911 的 INT/RESET 已确认不接（官方 NC，轮询模式）；如需中断驱动，从适配板 J6-pin5(pin8) 飞线到空闲 GPIO 并改 esp32p4_touch.c 回调
+- 触摸 GT911 的 INT/RESET 已确认不接（官方 NC，轮询模式）；如需中断驱动，从适配板 J6-pin5（INT_TP）/ J6-pin8（RESET_TP）飞线到空闲 GPIO 并改 esp32p4_touch.c 回调（J6 引脚号为 VLM 识别，中等置信度，飞线前用万用表复核）
+- 触摸坐标方向：esp-bsp 配置了 mirror_x/mirror_y=1，NuttX gt9xx 驱动不做镜像，真机需验证触摸坐标与显示坐标是否一致
 - 摄像头 SCCB 是否与显示/音频确为同一 I2C 物理总线
