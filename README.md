@@ -175,6 +175,7 @@ esptool.py -c esp32p4 -p /dev/ttyACM0 -b 921600 \
 ```
 app/signbridge/                 应用（见 3.1）
 board/esp32p4_function_ev/      板级文档：引脚表、增量配置
+docs/                           项目规划（PROJECT_PLAN）、技术报告（TECH_REPORT）
 models/                         分类器权重、hand landmark 模型、词表
 media/signs/                    50 词播报 WAV
 tools/                          PC 端训练脚本
