@@ -74,7 +74,7 @@
 | 3. 摄像头 | 自研 MIPI-CSI 驱动、SC2336 接入、双缓冲取帧 |
 | 4. 应用 | signbridge 推理应用（专属仓）、lvgldemo UI/预览（nuttx-apps） |
 | 5. 构建链 | CMake 全链路修复并出 bin（HAL 补丁/多脚本链接/mkimage） |
-| 6. 提交 | nuttx#364、nuttx-apps#123、专属仓 PR #16/#17/#18/#20 |
+| 6. 提交 | nuttx#364、nuttx-apps#123、专属仓 PR #15–#21（文档与状态更新） |
 
 ## 4. 代码归属
 
