@@ -127,17 +127,20 @@ export PATH=<riscv32-esp-elf 工具链>/bin:$PATH   # esp-14.2.0 验证通过
 cd nuttx
 export PATH=<riscv-none-elf 工具链>/bin:$PATH   # 验证版本：GCC 13.4.0
 python3 tools/kconfiglib_olddefconfig.py \
-    boards/risc-v/esp32p4/esp32p4-function-ev-board/configs/lvgl/defconfig
+    boards/risc-v/esp32p4/esp32p4-function-ev-board/configs/nsh/defconfig
 make -j$(nproc)
 ```
 
-产物 `nuttx/nuttx.bin`，约 10.7MB（含应用、模型与词库 ROMFS 镜像）。
+SignBridge 完整固件在 nsh 基础上按
+`board/esp32p4_function_ev/defconfig.inc` 的阶段增量放开显示/触摸/
+音频/摄像头/推理开关（menuconfig 或合并 defconfig），产物
+`nuttx/nuttx.bin` 约 10.7MB（含应用、模型与词库 ROMFS 镜像）。
 
 ### 5.3 烧录
 
 ```
 esptool.py -c esp32p4 -p /dev/ttyACM0 -b 921600 \
-    write_flash -fs detect -fm dio -ff 80m 0x0 nuttx.bin
+    write_flash 0x2000 nuttx.bin
 ```
 
 ### 5.4 运行
@@ -150,12 +153,12 @@ esptool.py -c esp32p4 -p /dev/ttyACM0 -b 921600 \
 | 项 | 状态 |
 |---|---|
 | nsh 配置 CMake 全链路构建（HAL 拉取/补丁/编译/链接/出 bin） | 通过，nuttx.bin 281KB，0 error |
-| lvgl 配置全量编译（含应用、模型、词库） | 通过，产物 10.7MB，0 error |
-| 板级外设配置集（30+：adc/pwm/i2c/spi/ethernet/twai/watchdog 等） | 已验证 |
+| SignBridge 全量固件编译（LVGL/CSI/触摸增量，见 defconfig.inc） | 通过，产物 10.7MB，0 error |
+| 板级外设配置集（35 个：adc/pwm/i2c/spi/ethernet/twai/watchdog 等） | 已验证 |
 | 应用源码 checkpatch | 通过（0 error / 0 warning） |
 | 关键符号入链（入口/状态机/窗口/音频/触摸） | 已核对 |
 | 引脚分配与官方原理图、esp-bsp 一致性 | 已逐项核对（见 pins.md） |
-| CSI 采集与 LVGL 预览链路（lvgldemo camera 模块） | 已实现并编译通过 |
+| CSI 采集与 LVGL 预览链路 | 已实现并编译通过（nuttx-apps lvgldemo camera 模块；signbridge_camera 帧源） |
 | 应用整机链路（烧录后 UI/语音/推理联调） | 基本完成，待烧录复验 |
 
 ## 7. 已知问题与约束
@@ -184,8 +187,8 @@ logs/                           AI Coding 会话日志
 |---|---|
 | open-vela/nuttx，PR #364（dev-ai-contest-2026） | esp32p4 arch 移植、板级目录、外设驱动（gt9xx）、CMake 构建支持（接续 #347） |
 | open-vela/nuttx-apps，PR #123（dev-ai-contest-2026） | lvgldemo SignBridge UI：开机画面、摄像头预览（SC2336/CSI）、中文字库 |
-| 本仓库，PR #17 | 文档与状态更新（整体基本完成）、CMake 构建记录、配置增量 |
-| 本仓库 | 应用、模型、词库、板级文档、AI 日志 |
+| 本仓库，PR #16（dev-ai-contest-2026） | 作品应用（signbridge）、文档与状态更新（整体基本完成）、CMake 构建记录、配置增量 |
+| 本仓库 | 模型、词库、板级文档、AI 日志（随 PR #16 一并提交） |
 
 ## 10. AI 辅助说明
 
