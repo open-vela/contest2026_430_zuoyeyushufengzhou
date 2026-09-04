@@ -125,10 +125,10 @@ export PATH=<riscv32-esp-elf 工具链>/bin:$PATH   # esp-14.2.0 验证通过
 
 ```
 cd nuttx
-export PATH=<riscv-none-elf 工具链>/bin:$PATH   # 验证版本：GCC 13.4.0
+export PATH=<riscv32-esp-elf 工具链>/bin:$PATH   # esp-14.2.0 验证通过
 python3 tools/kconfiglib_olddefconfig.py \
     boards/risc-v/esp32p4/esp32p4-function-ev-board/configs/nsh/defconfig
-make -j$(nproc)
+make CROSSDEV=riscv32-esp-elf- -j$(nproc)
 ```
 
 SignBridge 完整固件在 nsh 基础上按
@@ -156,6 +156,7 @@ esptool.py -c esp32p4 -p /dev/ttyACM0 -b 921600 \
 | SignBridge 全量固件编译（LVGL/CSI/触摸增量，见 defconfig.inc） | 通过，产物 10.7MB，0 error |
 | 板级外设配置集（35 个：adc/pwm/i2c/spi/ethernet/twai/watchdog 等） | 已验证 |
 | 应用源码 checkpatch | 通过（0 error / 0 warning） |
+| 公共仓 CI（open-vela） | nuttx PR #364 全绿（5 平台构建/checkpatch/CLA）；nuttx-apps PR #123 checkpatch/CLA 通过，默认 LVGL 构建条件编译修复已推送复跑 |
 | 关键符号入链（入口/状态机/窗口/音频/触摸） | 已核对 |
 | 引脚分配与官方原理图、esp-bsp 一致性 | 已逐项核对（见 pins.md） |
 | CSI 采集与 LVGL 预览链路 | 已实现并编译通过（nuttx-apps lvgldemo camera 模块；signbridge_camera 帧源） |

@@ -390,6 +390,7 @@ lvgldemo 的 camera 模块验证了 CSI 数据面，signbridge 的帧源抽象
 | lvgl 配置全量编译（应用+模型+词库） | 通过，产物 10.7MB，0 error |
 | 板级外设配置集（35 个：adc/pwm/i2c/spi/ethernet/twai/watchdog 等） | 已验证 |
 | 应用源码 checkpatch | 0 error / 0 warning |
+| 公共仓 CI（open-vela） | nuttx PR #364 全绿（5 平台构建/checkpatch/CLA）；nuttx-apps PR #123 同步合规检查通过 |
 | 关键符号入链（入口/状态机/窗口/音频/触摸） | 已核对 |
 | 引脚分配与官方原理图、esp-bsp 一致性 | 逐项核对（见 board/pins.md） |
 | CSI 采集与 LVGL 预览链路 | 已实现并编译通过 |
