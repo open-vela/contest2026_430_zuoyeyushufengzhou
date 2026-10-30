@@ -54,6 +54,10 @@ I2S0 引脚：BCLK=12，MCLK=13，WS=10，DOUT=9，DIN=11。
 └─────────────────────────────────────────────┘
 ```
 
+![系统架构](docs/images/architecture.png)
+*图 1 系统架构：分层视图与跨切能力*
+```
+
 ### 3.1 应用模块（app/signbridge/）
 
 | 文件 | 职责 |
@@ -71,11 +75,23 @@ I2S0 引脚：BCLK=12，MCLK=13，WS=10，DOUT=9，DIN=11。
 | signbridge_pm.c | 空闲关背光 / 活动恢复 |
 | signbridge_vocab.c | 50 词共享词表（识别/播报/动画单一数据源） |
 
+![功能结构图](docs/images/functional_structure.png)
+*图 2 功能结构：识别 / 播报 / 系统支撑三方向*
+
 ### 3.2 识别链路
 
 摄像头帧 → hand landmark 模型（MediaPipe，TFLite Micro）→ 21×3 关键点
 → 32 帧滑动窗口（带回绕解绕）→ INT8 MLP 分类器（2016→128→64→50）→
 类别与置信度 → 上屏 / 语音播报 / 纠错队列。
+
+![正向识别链路](docs/images/recognition_flow.png)
+*图 3 正向识别链路：采集到播报的完整流程*
+
+![语义纠错算法](docs/images/correction_flow.png)
+*图 4 语义纠错算法：置信度过滤 → 去重合并 → 词表拼句*
+
+![识别播报时序](docs/images/sequence_diagram.png)
+*图 5 识别播报时序：句末 flush 触发上屏与语音*
 
 ### 3.3 关键技术决策
 
