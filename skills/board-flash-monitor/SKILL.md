@@ -24,7 +24,7 @@ description: ESP32-P4-Function-EV-Board 在 openvela 下的构建、烧录、串
 
 ## Step 2：defconfig 变更核对纪律
 
-1. 功能增量按 `board/esp32p4_function_ev/defconfig.inc` 的阶段注释逐段放开（阶段 1 显示 → 1b 音频 → 2 摄像头 → 3 推理 → 4 应用），合并方式：`cat configs/nsh/defconfig defconfig.inc | sort -u > 新 defconfig`。
+1. 功能增量按 `board/esp32p4_function_ev/defconfig.inc` 的阶段注释逐段放开（阶段 1 显示 → 1b 音频 → 2 摄像头 → 3 推理 → 4 应用 → 5 lvgldemo 演示），合并方式：`cat configs/nsh/defconfig defconfig.inc | sort -u > 新 defconfig`。
 2. **choice 型配置「删行」≠ 关闭**——删行后回落 Kconfig 默认值（choice 组必有选中项兜底）。关闭必须显式写 `# CONFIG_XXX is not set` 或改选同组其他项。
 3. 任何 defconfig 变更后必须重新生成配置并 `grep <关键项>` **逐项核对生效**，严禁只看编译是否通过。
 
@@ -36,7 +36,7 @@ description: ESP32-P4-Function-EV-Board 在 openvela 下的构建、烧录、串
 | UART 桥接芯片口 | VID **10C4**（CP210x）；无端口时按板上丝印装 CP210x / CH34x 驱动 |
 | 只探测到无关虚拟串口 | 板不在位或未枚举——**止步构建交付，不烧录、不视为验收** |
 | 烧录中偶发掉枚举 | 重插 USB 即恢复；先查设备管理器 / `dmesg`，再怀疑代码 |
-| 验身 | `esptool.py -c esp32p4 read_mac`（或 `flash_id`）确认芯片应答；进下载模式：按住 BOOT(GPIO0) + 按 Reset（`pins.md`） |
+| 验身 | `esptool.py -c esp32p4 -p <端口> read_mac`（或 `flash_id`）确认芯片应答；进下载模式：按住 BOOT(GPIO0) + 按 Reset（`pins.md`） |
 
 ## Step 4：烧录与监控——单任务串行纪律
 
