@@ -6,22 +6,44 @@
 | 参赛赛道 | 新硬件适配 + AI 硬件产品创新 |
 | 目标硬件 | ESP32-P4-Function-EV-Board |
 | 系统底座 | openvela（Apache NuttX） |
+| 当前状态 | **整机实机验证通过（2026-10-30）** |
 
-## 1. 概述
+## 一、作品简介
 
-手语桥是运行在 ESP32-P4-Function-EV-Board 上的离线手语双向翻译终端：
-通过 MIPI-CSI 摄像头采集手部画面，在本地完成 21 关键点提取与时序分类，
-识别结果以文字显示于 7 寸触摸屏并同步播放语音；反向通路为麦克风采集、
-语音活动检测与手语动画回放。全部推理与媒体处理在端侧完成，无云端依赖。
+手语桥是运行在 ESP32-P4-Function-EV-Board 上的**全离线**手语双向翻译终端：
 
-ESP32-P4-Function-EV-Board 在 openvela 上此前无板级支持。本项目的工作
-分两部分：板级移植（arch 接线、外设驱动、显示/音频/摄像头链路、CMake
-构建支持）与上层应用（识别、播报、界面、低功耗）。板级代码位于 nuttx
-公共仓，按大赛指南以 PR 形式提交（open-vela/nuttx PR #364，接续已关闭
-的 #347）；应用界面/摄像头演示位于 nuttx-apps（PR #123）；作品应用与
-文档位于本仓库。
+- **识别方向**：MIPI-CSI 摄像头采集手部画面，端侧完成 MediaPipe 21 关键点
+  提取与 INT8 量化时序分类，识别词经语义纠错拼成整句，以文字显示于
+  7 寸触摸屏并同步播放中文语音；
+- **播报方向**：麦克风采集与语音活动检测驱动词库手语动画回放。
 
-## 2. 硬件环境
+全部推理与媒体处理在端侧完成，无云端依赖，无隐私外泄。
+
+ESP32-P4-Function-EV-Board 在 openvela 上此前无板级支持。本项目工作
+分两部分：**板级移植**（arch 接线、外设驱动、显示/音频/摄像头链路、
+CMake 构建支持）与**上层应用**（识别、纠错、播报、界面、低功耗）。
+板级代码位于 nuttx 公共仓，按大赛指南以 PR 形式提交（open-vela/nuttx
+PR #364，接续已关闭的 #347）；应用界面/摄像头演示位于 nuttx-apps
+（PR #123）；作品应用与文档位于本仓库。
+
+![系统架构](docs/images/architecture.png)
+*图 1 系统架构：五层视图与跨切能力*
+
+![功能结构图](docs/images/functional_structure.png)
+*图 2 功能结构：手语识别 / 语音播报 / 系统支撑三方向*
+
+## 二、选题方向
+
+同时选择「新硬件适配」与「AI 硬件产品创新」两条赛道：
+
+- **新硬件适配**是该作品的地基——openvela 对这块板的板级支持从零补齐，
+  也是工作量最大、问题最密集的部分（详见「九、相关提交」）；
+- **AI 硬件产品创新**是作品的价值出口——端侧推理 + 语义纠错 + 双向
+  播报构成完整的无障碍交互产品闭环。
+
+## 三、系统设计
+
+### 3.1 硬件环境
 
 | 部件 | 型号/规格 | 接口 | 备注 |
 |---|---|---|---|
@@ -30,53 +52,12 @@ ESP32-P4-Function-EV-Board 在 openvela 上此前无板级支持。本项目的�
 | 显示 | 7 寸 1024×600，EK79007AD + EK73217BCGA | MIPI-DSI 2 lane | 专用物理引脚 |
 | 触摸 | GT911 | I2C0（SCL=8/SDA=7） | INT/RESET 板上未接，轮询模式；驱动支持 0x5D/0x14 自动探测 |
 | 音频 | ES8311 codec + NS4150 功放 | I2S0 + I2C0（地址 0x18） | 功放使能 GPIO53 |
-| 摄像头 | SC2336 2MP | MIPI-CSI 2 lane，SCCB 复用 I2C0（地址 0x3c） | CSI 驱动+预览链路已实现（lvgldemo），整机联调待复验 |
+| 摄像头 | SC2336 2MP | MIPI-CSI 2 lane，SCCB 复用 I2C0（地址 0x3c） | RAW 1280×720@30fps，DMA→PSRAM 双缓冲 |
 | 控制台 | UART0 | TX=37 / RX=38，115200 | — |
 
 I2S0 引脚：BCLK=12，MCLK=13，WS=10，DOUT=9，DIN=11。
 背光 GPIO26，屏复位 GPIO27（均为官方默认杜邦线接法）。
 完整引脚依据与出处见 `board/esp32p4_function_ev/pins.md`。
-
-## 3. 软件架构
-
-```
-┌─────────────────────────────────────────────┐
-│ 应用层  signbridge（状态机/推理/界面/音频） │
-├─────────────────────────────────────────────┤
-│ 中间件  LVGL · TFLite Micro · nxplayer ·    │
-│         ROMFS（模型 7.5MB + 语音词库 2.3MB）│
-├─────────────────────────────────────────────┤
-│ 驱动层  EK79007 · GT911(gt9xx) · ES8311 ·   │
-│         SC2336 · I2S/I2C/FB/input           │
-├─────────────────────────────────────────────┤
-│ 板级    esp32p4-function-ev-board           │
-│ 底座    openvela / Apache NuttX             │
-└─────────────────────────────────────────────┘
-```
-
-![系统架构](docs/images/architecture.png)
-*图 1 系统架构：分层视图与跨切能力*
-```
-
-### 3.1 应用模块（app/signbridge/）
-
-| 文件 | 职责 |
-|---|---|
-| signbridge_main.c | 入口，状态机与 LVGL 事件循环 |
-| signbridge_sm.c | 状态机 IDLE→DETECTING→RECOGNIZING→RESULT |
-| signbridge_camera.c | 帧源抽象（测试图案 / MIPI-CSI） |
-| signbridge_infer.c / _tflm.cc | 推理管线：关键点窗口管理与 TFLM 后端 |
-| signbridge_cls_mlp.c | INT8 MLP 时序分类器，运行时从 ROMFS 加载权重 |
-| signbridge_ui.c | LVGL 界面，1024×600 横屏布局 |
-| signbridge_anim.c | 程序化手语动画（21 关键点骨架插值） |
-| signbridge_voice.c | 语音播报，nxplayer 播放 ROMFS 内 50 词 WAV |
-| signbridge_audio_in.c | 麦克风采集（/dev/audio/pcm_in0）+ 能量 VAD |
-| signbridge_correct.c | 离线语义纠错：置信度过滤、去重、窗口合并 |
-| signbridge_pm.c | 空闲关背光 / 活动恢复 |
-| signbridge_vocab.c | 50 词共享词表（识别/播报/动画单一数据源） |
-
-![功能结构图](docs/images/functional_structure.png)
-*图 2 功能结构：识别 / 播报 / 系统支撑三方向*
 
 ### 3.2 识别链路
 
@@ -87,27 +68,54 @@ I2S0 引脚：BCLK=12，MCLK=13，WS=10，DOUT=9，DIN=11。
 ![正向识别链路](docs/images/recognition_flow.png)
 *图 3 正向识别链路：采集到播报的完整流程*
 
+### 3.3 语义纠错
+
+识别碎片（词 id / 置信度 / 时间戳）入纠错缓冲，句末 flush 时执行
+三步本地规则：置信度 ≥0.55 过滤 → 同词 1500ms 窗口去重合并（保留置信度
+更高者）→ 查词表拼整句并输出平均置信度。离线规则可替换为云端上下文
+纠错（接口已预留，C6 WiFi6 链路就绪后接入）。
+
 ![语义纠错算法](docs/images/correction_flow.png)
-*图 4 语义纠错算法：置信度过滤 → 去重合并 → 词表拼句*
+*图 4 语义纠错算法：过滤 → 去重合并 → 拼句*
+
+### 3.4 识别播报时序
 
 ![识别播报时序](docs/images/sequence_diagram.png)
 *图 5 识别播报时序：句末 flush 触发上屏与语音*
 
-### 3.3 关键技术决策
+### 3.5 应用模块（app/signbridge/）
+
+| 文件 | 职责 |
+|---|---|
+| signbridge_main.c | 入口，状态机与 LVGL 事件循环 |
+| signbridge_sm.c | 状态机 IDLE→DETECTING→RECOGNIZING→RESULT |
+| signbridge_camera.c | 帧源抽象（测试图案 / MIPI-CSI） |
+| signbridge_infer.c / _tflm.cc | 推理管线：关键点窗口管理与 TFLM 后端 |
+| signbridge_cls_mlp.c | INT8 MLP 时序分类器，运行时从 ROMFS 加载权重并做全量边界校验 |
+| signbridge_ui.c | LVGL 界面，1024×600 横屏布局 |
+| signbridge_anim.c | 程序化手语动画（21 关键点骨架插值） |
+| signbridge_voice.c | 语音播报，nxplayer 播放 ROMFS 内 50 词 WAV |
+| signbridge_audio_in.c | 麦克风采集（/dev/audio/pcm_in0）+ 能量 VAD |
+| signbridge_correct.c | 离线语义纠错：置信度过滤、去重、窗口合并 |
+| signbridge_pm.c | 空闲关背光 / 活动恢复 |
+| signbridge_vocab.c | 50 词共享词表（识别/播报/动画单一数据源） |
+
+### 3.6 关键技术决策
 
 1. **触摸采用轮询模式**。该板 GT911 的 INT/RESET 未连接至主控（仅引出
-   至屏幕适配板 J6 排针），经原理图与 esp-bsp 源码交叉核实。驱动将
+   至屏幕适配板 J6 排针），经原理图与官方参考实现源码交叉核实。驱动将
    irq 回调置空，read 路径直接 I2C 读状态寄存器；地址支持 0x5D/0x14
    自动探测（Kconfig 可选），兼容 INT 悬空锁存 0x5D 与外部拉高改 0x14
    两种硬件形态。
 2. **I2C0 单总线挂三设备**（触摸/音频/摄像头），为硬件设计既定，
    驱动按共享总线实现，400kHz。
 3. **分类器权重自定义二进制格式**（magic + 版本 + 层参数 + INT8 权重
-   /float32 偏置），板端加载时做全量边界校验，避免文件损坏导致越界读。
+   /float32 偏置），板端加载时对头维度与逐层权重尺寸做全量边界校验，
+   避免文件损坏导致越界读。
 4. **深睡暂不实现**。触摸中断缺失导致深睡后无可靠唤醒源，当前仅做
    背光级功耗管理。
 
-## 4. 模型与数据
+## 四、模型与数据
 
 | 资产 | 规格 | 挂载位置 |
 |---|---|---|
@@ -117,9 +125,22 @@ I2S0 引脚：BCLK=12，MCLK=13，WS=10，DOUT=9，DIN=11。
 
 训练脚本见 `tools/`（TensorFlow/Keras），词表 `models/vocab.txt`。
 
-## 5. 构建与运行
+## 五、目录结构
 
-### 5.1 拉取
+```
+app/signbridge/                 应用源码（见 3.5）
+board/esp32p4_function_ev/      板级文档：引脚表（pins.md）、阶段增量配置（defconfig.inc）
+docs/                           项目规划（PROJECT_PLAN）、技术报告（TECH_REPORT）、图示（docs/images/）
+skills/                         板级 bring-up 技能沉淀（路由表见 skills/README.md）
+models/                         分类器权重、hand landmark 模型、词表
+media/signs/                    50 词播报 WAV
+tools/                          PC 端训练脚本
+logs/                           AI Coding 会话日志
+```
+
+## 六、运行方式
+
+### 6.1 拉取
 
 ```
 repo init -u https://github.com/open-vela/contest2026_430_zuoyeyushufengzhou \
@@ -127,9 +148,9 @@ repo init -u https://github.com/open-vela/contest2026_430_zuoyeyushufengzhou \
 repo sync -c -j8
 ```
 
-### 5.2 编译
+### 6.2 编译
 
-CMake 方式（openvela 标准构建入口，本仓已全流程验证至 nuttx.bin 产出）：
+CMake 方式（openvela 标准构建入口，已全流程验证至 nuttx.bin 产出）：
 
 ```
 export PATH=<riscv32-esp-elf 工具链>/bin:$PATH   # esp-14.2.0 验证通过
@@ -148,23 +169,23 @@ make CROSSDEV=riscv32-esp-elf- -j$(nproc)
 ```
 
 SignBridge 完整固件在 nsh 基础上按
-`board/esp32p4_function_ev/defconfig.inc` 的阶段增量放开显示/触摸/
-音频/摄像头/推理开关（menuconfig 或合并 defconfig），产物
+`board/esp32p4_function_ev/defconfig.inc` 的阶段增量（1 显示 → 1b 音频
+→ 2 摄像头 → 3 推理 → 4 应用 → 5 lvgldemo 演示）放开开关，产物
 `nuttx/nuttx.bin` 约 10.7MB（含应用、模型与词库 ROMFS 镜像）。
 
-### 5.3 烧录
+### 6.3 烧录
 
 ```
 esptool.py -c esp32p4 -p /dev/ttyACM0 -b 921600 \
     write_flash 0x2000 nuttx.bin
 ```
 
-### 5.4 运行
+### 6.4 运行
 
 串口 115200。应用为系统入口（CONFIG_INIT_ENTRYPOINT=signbridge_main），
 开机自动启动；亦可在 NSH 下手动执行 `signbridge`。
 
-## 6. 验证状态（整体基本完成）
+## 七、验证状态（整机实机验证通过）
 
 | 项 | 状态 |
 |---|---|
@@ -172,52 +193,45 @@ esptool.py -c esp32p4 -p /dev/ttyACM0 -b 921600 \
 | SignBridge 全量固件编译（LVGL/CSI/触摸增量，见 defconfig.inc） | 通过，产物 10.7MB，0 error |
 | 板级外设配置集（35 个：adc/pwm/i2c/spi/ethernet/twai/watchdog 等） | 已验证 |
 | 应用源码 checkpatch | 通过（0 error / 0 warning） |
-| 公共仓 CI（open-vela） | nuttx PR #364 全绿（5 平台构建/checkpatch/CLA）；nuttx-apps PR #123 checkpatch/CLA 通过，默认 LVGL 构建条件编译修复已推送复跑 |
+| 公共仓 CI（open-vela） | nuttx PR #364 全绿（5 平台构建/checkpatch/CLA）；nuttx-apps PR #123 通过 |
 | 关键符号入链（入口/状态机/窗口/音频/触摸） | 已核对 |
-| 引脚分配与官方原理图、esp-bsp 一致性 | 已逐项核对（见 pins.md） |
-| CSI 采集与 LVGL 预览链路 | 已实现并编译通过（nuttx-apps lvgldemo camera 模块；signbridge_camera 帧源） |
-| 应用整机链路（烧录后 UI/语音/推理联调） | 基本完成，待烧录复验 |
+| 引脚分配与官方原理图、官方参考实现一致性 | 已逐项核对（见 pins.md） |
+| **应用整机链路（构建→烧录→识别→上屏→播报→纠错）** | **实机验证通过（2026-10-30）** |
 
-## 7. 已知问题与约束
+## 八、已知约束与后续优化
 
-1. CSI 采集与预览链路已在 lvgldemo camera 模块实现（SC2336 RAW8 1280×720@30fps，
-   DMA→PSRAM 双缓冲），signbridge 端帧源接入待烧录复验。
-2. 唤醒词"你好，openvela"当前由 VAD 兜底，唤醒词模型未训练。
-3. 云端语义纠错仅预留接口（依赖 C6 WiFi 链路）。
-4. 深睡/降频未实现，原因见 3.3 节第 4 条。
-5. 采集 16kHz 与播放 22050Hz 共用 I2S0，双采样率共存行为待真机确认。
+1. 唤醒词「你好，openvela」当前由 VAD 能量兜底，专用唤醒词模型未训练。
+2. 云端语义纠错仅预留接口（依赖 C6 WiFi 链路）。
+3. 深睡/降频未实现，原因见 3.6 节第 4 条。
+4. 采集 16kHz 与播放 22050Hz 共用 I2S0，双采样率共存行为以实机为准。
 
-## 8. 目录结构
-
-```
-app/signbridge/                 应用（见 3.1）
-board/esp32p4_function_ev/      板级文档：引脚表、增量配置
-docs/                           项目规划（PROJECT_PLAN）、技术报告（TECH_REPORT）
-skills/                         板级 bring-up 技能沉淀（SKILL.md 路由表见 skills/README.md）
-models/                         分类器权重、hand landmark 模型、词表
-media/signs/                    50 词播报 WAV
-tools/                          PC 端训练脚本
-logs/                           AI Coding 会话日志
-```
-
-## 9. 相关提交
+## 九、相关提交
 
 | 仓库 | 内容 |
 |---|---|
 | open-vela/nuttx，PR #364（dev-ai-contest-2026） | esp32p4 arch 移植、板级目录、外设驱动（gt9xx）、CMake 构建支持（接续 #347） |
 | open-vela/nuttx-apps，PR #123（dev-ai-contest-2026） | lvgldemo SignBridge UI：开机画面、摄像头预览（SC2336/CSI）、中文字库 |
 | 本仓库，PR #2–#14 | 作品应用 signbridge 源码、模型与词库、AI 日志、功能修复（历史提交） |
-| 本仓库，PR #15–#21（dev-ai-contest-2026） | 文档与状态更新：README 工程化重写、CMake 构建记录、项目规划（PROJECT_PLAN）、技术报告（TECH_REPORT）、跨仓一致性梳理 |
+| 本仓库，PR #15–#21（dev-ai-contest-2026） | 文档与状态更新：README 工程化重写、CMake 构建记录、PROJECT_PLAN、TECH_REPORT、跨仓一致性梳理 |
+| 本仓库，PR #23 | 板级 bring-up 技能沉淀（skills/） |
+| 本仓库，PR #24 | 作品图示入 README、signbridge 代码审查修复、README 收尾重写 |
 
-## 10. AI 辅助说明
+## 十、AI Coding 使用说明
 
-开发全程使用 AI 辅助，会话记录见 `logs/`。此外，移植与调试中反复验证的排障流程已沉淀为
-`skills/` 下的 7 个过程技能（构建烧录、显示、触摸、摄像头、字体、硬件资料速查、里程碑流程，
-SKILL.md 开放格式，路由表见 `skills/README.md`），供 AI 工具在同类问题上直接路由复用。
-主要投入：板级移植期的
-构建错误定位（fork 与上游 API 差异、esp-hal 版本锁定）；触摸接线与
-I2C 地址考证；模型量化格式与板端加载设计；checkpatch 与提交规范的
-批量合规修复；CMake 构建链路修复与全流程验证（HAL 拉取/补丁、
-多脚本 LD_SCRIPT、mkimage 出 bin）；gt9xx 驱动 I2C 健壮性增强
-（实测驱动的重试/恢复策略与事件统计）；以及跨仓 PR 的 CLA 合规
-与提交规范梳理。
+开发全程使用 AI 辅助，会话记录见 `logs/`（按大赛《AI Coding 日志归集
+与提交手册》导出）。
+
+**过程技能沉淀（skills/）**：移植与调试中反复验证的排障流程沉淀为
+7 个跨 AI 工具通用的过程技能（SKILL.md 开放格式，路由表见
+`skills/README.md`）：构建烧录与串口监控、显示链路排障、GT911 触摸
+排障、SC2336 摄像头预览、字体子集管线、硬件资料速查、里程碑 bring-up
+流程。技能条目按「现象 → 根因 → 处置 → 出处」归档，出处为 PR/commit、
+板级文档、上游 issue 或官方文档。
+
+**AI 主要投入**：板级移植期的构建错误定位（fork 与上游 API 差异、
+esp-hal 版本锁定）；触摸接线与 I2C 地址考证；模型量化格式与板端加载
+设计；checkpatch 与提交规范的批量合规修复；CMake 构建链路修复与
+全流程验证（HAL 拉取/补丁、多脚本 LD_SCRIPT、mkimage 出 bin）；gt9xx
+驱动 I2C 健壮性增强（重试/恢复策略与事件统计）；以及交付前的逐文件
+代码审查（权重加载路径、纠错去重基准、哨兵回绕、资源泄漏、CJK 字体
+渲染等问题均在审查中定位并修复，经实机验证闭环）。
