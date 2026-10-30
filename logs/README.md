@@ -8,6 +8,9 @@
 | 会话 | 工具 | 日期 | 事件数 | 说明 |
 |---|---|---|---|---|
 | qoder-signbridge-20260821 | opencode | 2026-08-21 | 124 | SignBridge 应用开发会话（backfill-sqlite 导出） |
+| signbridge-skills-20261030 | claude-code | 2026-10-30 | 9 | 板级 bring-up 技能沉淀会话：7 个 SKILL.md 改写、openvela 语境迁移、PR #23 提交 |
+| signbridge-review-20261030 | claude-code | 2026-10-30 | 14 | signbridge 代码审查会话：五图入 README、7 项逻辑修复、PR #24 时序处置 |
+| signbridge-readme-20261031 | claude-code | 2026-10-31 | 11 | README 收尾重写会话：十章结构重组、五图编章、PR #25 承载 |
 
 - 归集账号：`IsXiaoXiaoZhou`（manifest.json 中 github_login）
 - 会话日志持续归集中，后续日期的导出文件按同一目录约定追加。
