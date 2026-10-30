@@ -66,6 +66,18 @@
 #define UI_CANVAS_W         500
 #define UI_CANVAS_H         500
 
+/* Text font for labels that render Chinese vocabulary words.  The
+ * default montserrat fonts carry no CJK glyphs and would draw tofu;
+ * enable CONFIG_LV_FONT_SIMSUN_16_CJK (board defconfig) and the built-in
+ * LVGL CJK font is used instead.
+ */
+
+#if defined(CONFIG_LV_FONT_SIMSUN_16_CJK) && CONFIG_LV_FONT_SIMSUN_16_CJK
+#  define SIGNBRIDGE_UI_TEXT_FONT   (&lv_font_simsun_16_cjk)
+#else
+#  define SIGNBRIDGE_UI_TEXT_FONT   (&lv_font_montserrat_14)
+#endif
+
 /* Colors */
 
 #define UI_COLOR_BG         lv_color_hex(0x1a1a2e)
@@ -131,7 +143,7 @@ static void create_result_area(lv_obj_t *parent)
 {
   g_result_label = lv_label_create(parent);
   lv_label_set_text(g_result_label, "---");
-  lv_obj_set_style_text_font(g_result_label, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_font(g_result_label, SIGNBRIDGE_UI_TEXT_FONT, 0);
   lv_obj_set_style_text_color(g_result_label, UI_COLOR_RESULT, 0);
   lv_obj_set_style_text_align(g_result_label, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_long_mode(g_result_label, LV_LABEL_LONG_WRAP);

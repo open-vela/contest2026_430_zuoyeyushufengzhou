@@ -32,6 +32,7 @@
 
 #include "signbridge.h"
 #include "signbridge_infer.h"
+#include "signbridge_vocab.h"
 
 /****************************************************************************
  * Pre-processor Definitions
@@ -41,9 +42,9 @@
 #define CLS_HIDDEN1     128
 #define CLS_HIDDEN2     64
 
-/* Weight file path in ROMFS */
+/* Weight file path in ROMFS (as exported by tools/train_sign_classifier_tf.py) */
 
-#define CLS_WEIGHTS_PATH  "/etc/models/sign_classifier.bin"
+#define CLS_WEIGHTS_PATH  "/etc/models/sign_classifier_int8.bin"
 
 /* Binary weight file magic and version */
 
@@ -186,6 +187,29 @@ static int load_weights(const char *path)
 
   g_cls_output_dim = hdr.output_dim;
 
+  /* Validate header dimensions against the compiled-in architecture
+   * before trusting any weight section (README §3.3: full boundary
+   * validation at load time).
+   */
+
+  if (hdr.input_dim != CLS_INPUT_DIM ||
+      hdr.hidden1 != CLS_HIDDEN1 ||
+      hdr.hidden2 != CLS_HIDDEN2 ||
+      hdr.output_dim != SIGNBRIDGE_VOCAB_SIZE)
+    {
+      syslog(LOG_ERR,
+             "cls_mlp: header dims mismatch "
+             "(in=%lu h1=%lu h2=%lu out=%lu, expected %d/%d/%d/%d)\n",
+             (unsigned long)hdr.input_dim, (unsigned long)hdr.hidden1,
+             (unsigned long)hdr.hidden2, (unsigned long)hdr.output_dim,
+             CLS_INPUT_DIM, CLS_HIDDEN1, CLS_HIDDEN2, SIGNBRIDGE_VOCAB_SIZE);
+      kmm_free(g_cls_out);
+      g_cls_out = NULL;
+      kmm_free(g_weight_buf);
+      g_weight_buf = NULL;
+      return -EINVAL;
+    }
+
   /* Allocate output buffer */
 
   g_cls_out = (float *)kmm_malloc(g_cls_output_dim * sizeof(float));
@@ -224,6 +248,16 @@ static int load_weights(const char *path)
   CLS_BOUNDS_CHECK(8);
   memcpy(&w_size, p, 4); p += 4;
   memcpy(&g_cls_s1, p, 4); p += 4;
+  if (w_size != CLS_INPUT_DIM * CLS_HIDDEN1)
+    {
+      syslog(LOG_ERR, "cls_mlp: w1 size %lu != %d\n",
+             (unsigned long)w_size, CLS_INPUT_DIM * CLS_HIDDEN1);
+      kmm_free(g_cls_out);
+      g_cls_out = NULL;
+      kmm_free(g_weight_buf);
+      g_weight_buf = NULL;
+      return -EINVAL;
+    }
   CLS_BOUNDS_CHECK((size_t)w_size + hdr.hidden1 * 4);
   g_cls_w1 = (const int8_t *)p; p += w_size;
   g_cls_b1 = (const float *)p;  p += hdr.hidden1 * 4;
@@ -233,6 +267,16 @@ static int load_weights(const char *path)
   CLS_BOUNDS_CHECK(8);
   memcpy(&w_size, p, 4); p += 4;
   memcpy(&g_cls_s2, p, 4); p += 4;
+  if (w_size != CLS_HIDDEN1 * CLS_HIDDEN2)
+    {
+      syslog(LOG_ERR, "cls_mlp: w2 size %lu != %d\n",
+             (unsigned long)w_size, CLS_HIDDEN1 * CLS_HIDDEN2);
+      kmm_free(g_cls_out);
+      g_cls_out = NULL;
+      kmm_free(g_weight_buf);
+      g_weight_buf = NULL;
+      return -EINVAL;
+    }
   CLS_BOUNDS_CHECK((size_t)w_size + hdr.hidden2 * 4);
   g_cls_w2 = (const int8_t *)p; p += w_size;
   g_cls_b2 = (const float *)p;  p += hdr.hidden2 * 4;
@@ -242,6 +286,16 @@ static int load_weights(const char *path)
   CLS_BOUNDS_CHECK(8);
   memcpy(&w_size, p, 4); p += 4;
   memcpy(&g_cls_s3, p, 4); p += 4;
+  if (w_size != CLS_HIDDEN2 * (uint32_t)g_cls_output_dim)
+    {
+      syslog(LOG_ERR, "cls_mlp: w3 size %lu != %d\n",
+             (unsigned long)w_size, CLS_HIDDEN2 * g_cls_output_dim);
+      kmm_free(g_cls_out);
+      g_cls_out = NULL;
+      kmm_free(g_weight_buf);
+      g_weight_buf = NULL;
+      return -EINVAL;
+    }
   CLS_BOUNDS_CHECK((size_t)w_size + hdr.output_dim * 4);
   g_cls_w3 = (const int8_t *)p; p += w_size;
   g_cls_b3 = (const float *)p;
@@ -340,7 +394,13 @@ static void mlp_forward(const float *input)
 void signbridge_cls_init(void)
 {
   g_weights_loaded = false;
-  g_cls_output_dim = CONFIG_DEMOS_SIGNBRIDGE_VOCAB_SIZE;
+
+  /* The vocabulary table (signbridge_vocab.c) is compiled in fixed at
+   * SIGNBRIDGE_VOCAB_SIZE; the classifier output dimension must match it
+   * or class ids would index past the table.
+   */
+
+  g_cls_output_dim = SIGNBRIDGE_VOCAB_SIZE;
   g_cls_out = NULL;
   g_weight_buf = NULL;
 

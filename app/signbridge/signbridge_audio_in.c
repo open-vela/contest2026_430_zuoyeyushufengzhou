@@ -394,7 +394,32 @@ int signbridge_audio_in_start(void)
   ret = ioctl(priv->fd, AUDIOIOC_START, 0);
   if (ret < 0)
     {
+      /* Full teardown on failure: leave nothing reserved / leaked, so a
+       * later start() attempt begins from a clean state.
+       */
+
       syslog(LOG_ERR, "audio_in: START failed: %d\n", errno);
+      ioctl(priv->fd, AUDIOIOC_STOP, 0);   /* flush driver-side queues */
+      ioctl(priv->fd, AUDIOIOC_UNREGISTERMQ, 0);
+      file_mq_close(&priv->mq);
+
+      for (i = 0; i < priv->nbufs; i++)
+        {
+          if (priv->buffers[i] != NULL)
+            {
+              struct audio_buf_desc_s buf_desc;
+
+              buf_desc.u.buffer = priv->buffers[i];
+              ioctl(priv->fd, AUDIOIOC_FREEBUFFER,
+                    (unsigned long)&buf_desc);
+              priv->buffers[i] = NULL;
+            }
+        }
+
+      priv->nbufs = 0;
+      ioctl(priv->fd, AUDIOIOC_RELEASE, 0);
+      close(priv->fd);
+      priv->fd = -1;
       return -errno;
     }
 
