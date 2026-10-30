@@ -16,7 +16,7 @@ description: LVGL 中文字库子集生成管线与排障——Noto Sans SC 可�
 | 项 | 说明 |
 |----|------|
 | 字体源 | Noto Sans SC（OFL 1.1，明确允许子集化嵌入）：`NotoSansSC-Regular.ttf` 静态版 + `NotoSansSC_VF.ttf` 可变字体 |
-| 图标字体源 | Material SymbolsOutlined `.ttf` + `.codepoints` 码点表 |
+| 图标字体源 | Material Symbols Outlined `.ttf` + `.codepoints` 码点表 |
 | 产物（入库） | `ui_font_noto_<size>.c`、`ui_font_mat_<size>.c` 等生成 C 源文件，**直接纳入应用源列表随固件编译**（nuttx-apps PR #123 的 SignBridge UI 中文字库即此形态） |
 | 集成点 | 应用侧 CMakeLists.txt / Makefile 登记源文件；生成文件默认 `#include "lvgl/lvgl.h"`，按应用包含路径适配编译定义（如 `LV_LVGL_H_INCLUDE_SIMPLE`） |
 
@@ -47,7 +47,7 @@ description: LVGL 中文字库子集生成管线与排障——Noto Sans SC 可�
 | ③ 子集缺字 | ①② 都正常而屏上仍豆腐块 | 字符不在子集内 → 补字重跑管线 |
 
 - **严禁盲开 `LV_FONT_FMT_TXT_LARGE`**：先核最大 `bitmap_index` 是否超出非 LARGE 位域上限 2^20（`lv_font_fmt_txt.h:29-37`，LVGL 9.x 源码）。
-- LVGL 9.x 探针两个坑：`lv_font_get_glyph_dsc` 第 3 参传**当前字符**（非 NULL）；`lv_font_t` 无 `glyph_cnt` 成员。
+- LVGL 9.x 探针两个坑（以实际集成的 LVGL 版本为准）：`lv_font_get_glyph_dsc` 第 3 参传**当前字符**（非 NULL）；`lv_font_t` 无 `glyph_cnt` 成员。
 - 方法论：乱码类问题**先证数据、再证检索、最后才怀疑配置**。
 
 ## Step 4：字体选型与许可红线

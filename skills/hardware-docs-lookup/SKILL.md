@@ -20,7 +20,7 @@ description: ESP32-P4-Function-EV-Board 硬件资料速查——需求到出处�
 | 外设参数与接口汇总 | `README.md` §2 硬件环境表 | 型号 / 接口 / 地址一页速查 |
 | 板级适配背景与验证状态 | `docs/TECH_REPORT.md` 硬件设计与适配节、`docs/PROJECT_PLAN.md` | — |
 | 官方装配方式 / 跳线 / 入门 | Espressif 官方用户指南《ESP32-P4X-Function-EV-Board》（docs.espressif.com） | 主板叠装与杜邦线接法的权威出处 |
-| 屏 / 摄像头 / 驱动芯片参数 | 显示规格书 AML070JGI50（EK79007AD + EK73217BCGA，1024×600）、摄像头模组资料 | 引用于 `pins.md` 文首依据链 |
+| 屏 / 驱动芯片参数 | 显示规格书 AML070JGI50（EK79007AD + EK73217BCGA，1024×600）；显示 / 摄像头子板原理图 | 引用于 `pins.md` 文首依据链 |
 
 ## Step 2：已验证硬件事实速查（引用时注明出处）
 
@@ -35,7 +35,7 @@ description: ESP32-P4-Function-EV-Board 硬件资料速查——需求到出处�
 | MIPI-DSI / CSI 数据线为 P4 专用物理引脚，**无 GPIO 矩阵映射** | `pins.md` |
 | 摄像头 XVCLK 由子板 24MHz 晶振（Y1）提供；传感器复位经子板 NMOS 电平转换 | `pins.md` |
 | 控制台 UART0：TX=GPIO37 / RX=GPIO38，115200；进下载模式：BOOT(GPIO0) + Reset | `pins.md` |
-| 主板孔距 58×49，官方叠装于 LCD 子板中心 4 螺母柱 | 官方用户指南 |
+| 官方叠装方式：主板叠于 LCD 子板中心 4 螺母柱（孔距 58×49 为实测值） | 官方用户指南（叠装方式）+ 子板钻孔文件实测 |
 
 ## 注意事项
 
