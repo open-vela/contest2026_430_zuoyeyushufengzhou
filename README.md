@@ -177,6 +177,7 @@ esptool.py -c esp32p4 -p /dev/ttyACM0 -b 921600 \
 app/signbridge/                 应用（见 3.1）
 board/esp32p4_function_ev/      板级文档：引脚表、增量配置
 docs/                           项目规划（PROJECT_PLAN）、技术报告（TECH_REPORT）
+skills/                         板级 bring-up 技能沉淀（SKILL.md 路由表见 skills/README.md）
 models/                         分类器权重、hand landmark 模型、词表
 media/signs/                    50 词播报 WAV
 tools/                          PC 端训练脚本
@@ -194,7 +195,10 @@ logs/                           AI Coding 会话日志
 
 ## 10. AI 辅助说明
 
-开发全程使用 AI 辅助，会话记录见 `logs/`。主要投入：板级移植期的
+开发全程使用 AI 辅助，会话记录见 `logs/`。此外，移植与调试中反复验证的排障流程已沉淀为
+`skills/` 下的 7 个过程技能（构建烧录、显示、触摸、摄像头、字体、硬件资料速查、里程碑流程，
+SKILL.md 开放格式，路由表见 `skills/README.md`），供 AI 工具在同类问题上直接路由复用。
+主要投入：板级移植期的
 构建错误定位（fork 与上游 API 差异、esp-hal 版本锁定）；触摸接线与
 I2C 地址考证；模型量化格式与板端加载设计；checkpatch 与提交规范的
 批量合规修复；CMake 构建链路修复与全流程验证（HAL 拉取/补丁、
