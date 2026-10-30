@@ -99,6 +99,8 @@ int signbridge_correct_add(const struct signbridge_fragment_s *frag)
 int signbridge_correct_flush(struct signbridge_utterance_s *utterance)
 {
   uint8_t out_words[SIGNBRIDGE_CORRECT_MAX_WORDS];
+  float out_conf[SIGNBRIDGE_CORRECT_MAX_WORDS];
+  uint32_t out_ts[SIGNBRIDGE_CORRECT_MAX_WORDS];
   int nout = 0;
   int i;
   int len;
@@ -121,34 +123,44 @@ int signbridge_correct_flush(struct signbridge_utterance_s *utterance)
           continue;
         }
 
-      /* Rule 2/3: consecutive or rapid repeats of the same word collapse */
+      /* Rule 2/3: consecutive or rapid repeats of the same word collapse.
+       * Both rules compare against the last KEPT word: consecutive means
+       * the previous input fragment carried the same class; rapid means
+       * the re-detection arrived within FRAG_DUP_WINDOW_MS of the kept
+       * occurrence (the kept timestamp, not the previous input one).
+       */
 
-      if (nout > 0)
+      if (nout > 0 && out_words[nout - 1] == frag->class_id)
         {
-          uint8_t prev = out_words[nout - 1];
-          uint32_t gap = frag->ts_ms -
-                         g_frags[i - 1].ts_ms;
+          bool consecutive = (i > 0 &&
+                              g_frags[i - 1].class_id == frag->class_id);
+          bool rapid = (frag->ts_ms - out_ts[nout - 1]) <=
+                        FRAG_DUP_WINDOW_MS;
 
-          if (prev == frag->class_id &&
-              (i == 0 || g_frags[i - 1].class_id == frag->class_id ||
-               gap <= FRAG_DUP_WINDOW_MS))
+          if (consecutive || rapid)
             {
               /* Same word again: keep only the more confident one */
 
-              if (frag->confidence > g_frags[i - 1].confidence)
+              if (frag->confidence > out_conf[nout - 1])
                 {
                   out_words[nout - 1] = frag->class_id;
+                  out_conf[nout - 1]  = frag->confidence;
+                  out_ts[nout - 1]    = frag->ts_ms;
                 }
 
               continue;
             }
         }
 
-      out_words[nout++] = frag->class_id;
       if (nout >= SIGNBRIDGE_CORRECT_MAX_WORDS)
         {
           break;
         }
+
+      out_words[nout] = frag->class_id;
+      out_conf[nout]  = frag->confidence;
+      out_ts[nout]    = frag->ts_ms;
+      nout++;
     }
 
   /* Pass 2: template completion (common utterances) */
@@ -162,7 +174,7 @@ int signbridge_correct_flush(struct signbridge_utterance_s *utterance)
 
   utterance->nwords = nout;
   utterance->text[0] = '\0';
-  utterance->score = 1.0f;
+  utterance->score = 0.0f;
 
   for (i = 0; i < nout; i++)
     {
@@ -179,7 +191,7 @@ int signbridge_correct_flush(struct signbridge_utterance_s *utterance)
           break;
         }
 
-      if (i > 0)
+      if (utterance->text[0] != '\0')
         {
           strlcat(utterance->text, " ", sizeof(utterance->text));
         }
@@ -187,7 +199,17 @@ int signbridge_correct_flush(struct signbridge_utterance_s *utterance)
       strlcat(utterance->text, word, sizeof(utterance->text));
     }
 
-  /* Average confidence of kept fragments */
+  /* Keep the word id sequence alongside the text */
+
+  for (i = 0; i < nout; i++)
+    {
+      utterance->words[i] = out_words[i];
+    }
+
+  /* Average confidence of the kept words (out_conf tracks the fragment
+   * actually kept for each output slot, already applying the "higher
+   * confidence wins" merge).
+   */
 
   if (nout > 0)
     {
@@ -195,18 +217,7 @@ int signbridge_correct_flush(struct signbridge_utterance_s *utterance)
 
       for (i = 0; i < nout; i++)
         {
-          /* Re-locate the source fragment for score averaging */
-
-          int j;
-
-          for (j = 0; j < g_nfrags; j++)
-            {
-              if (g_frags[j].class_id == out_words[i])
-                {
-                  sum += g_frags[j].confidence;
-                  break;
-                }
-            }
+          sum += out_conf[i];
         }
 
       utterance->score = sum / nout;

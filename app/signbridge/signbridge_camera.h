@@ -7,7 +7,7 @@
  *
  * Provides a unified interface for acquiring camera frames, regardless
  * of the underlying source:
- *   - MIPI-CSI (SC2336 sensor via esp_cam_ctlr CSI driver)
+ *   - MIPI-CSI (SC2336 sensor via the board CSI capture driver)
  *   - Test pattern generator (for pipeline validation without camera)
  *   - File-based frame source (for offline testing)
  *

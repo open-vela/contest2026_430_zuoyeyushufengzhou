@@ -22,6 +22,8 @@
 #CONFIG_LV_USE_NUTTX_FBDEV=y
 #CONFIG_LV_USE_NUTTX_TOUCHSCREEN=y
 #CONFIG_LV_COLOR_DEPTH=16
+# 中文字形：识别结果/整句为中文，montserrat 无 CJK 会豆腐块，需开启
+#CONFIG_LV_FONT_SIMSUN_16_CJK=y
 #CONFIG_BOARD_LATE_INITIALIZE=y
 
 # --- 阶段 1b：音频播报（ES8311 codec + I2S0 + nxplayer）---

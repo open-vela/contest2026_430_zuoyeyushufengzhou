@@ -337,21 +337,23 @@ int signbridge_sm_post_result(const struct signbridge_result_s *result)
   g_last_result = *result;
   g_result_pending = true;
 
-  /* Feed the semantic correction module (offline fragment assembly) */
-
-  frag.class_id = result->class_id;
-
-  /* The correction module works in the 0..1 confidence domain while the
-   * recognition result carries a 0..100 percent value.
+  /* Feed the semantic correction module (offline fragment assembly).
+   * Negative class_id means "no confident result": skip the fragment
+   * here — the fragment field is unsigned, so the -1 sentinel would
+   * wrap around and pollute the utterance buffer.
    */
 
-  frag.confidence = (float)result->confidence / 100.0f;
-  frag.ts_ms = (uint32_t)((uint64_t)clock() * 1000 / CLOCKS_PER_SEC);
-
-  /* Negative class_id means "no confident result": skip the fragment */
-
-  if (frag.class_id >= 0)
+  if (result->class_id >= 0)
     {
+      frag.class_id = (uint8_t)result->class_id;
+
+      /* The correction module works in the 0..1 confidence domain while
+       * the recognition result carries a 0..100 percent value.
+       */
+
+      frag.confidence = (float)result->confidence / 100.0f;
+      frag.ts_ms = (uint32_t)((uint64_t)clock() * 1000 / CLOCKS_PER_SEC);
+
       signbridge_correct_add(&frag);
     }
 

@@ -7,7 +7,7 @@
  *
  * Currently implements:
  *   - Test pattern generator (animated gradient + hand silhouette)
- *   - Placeholder for MIPI-CSI (SC2336) via esp_cam_ctlr
+ *   - Placeholder for MIPI-CSI (SC2336) via the board CSI capture driver
  *
  ****************************************************************************/
 
